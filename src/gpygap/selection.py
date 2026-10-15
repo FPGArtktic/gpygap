@@ -20,31 +20,47 @@ from packaging.tags import Tag
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 
 from gpygap.config import SdistPolicy
-from gpygap.models import BuildTarget, DistFile, LockedPackage, MirrorFile
+from gpygap.models import FREE_THREADED_SUFFIX, BuildTarget, DistFile, LockedPackage, MirrorFile
 from gpygap.platforms import Platform
 from gpygap.resolver import Resolution
 
 _INTERPRETER = re.compile(r"(?P<impl>py|cp)(?P<major>\d)(?P<minor>\d*)")
+_FIRST_FREE_THREADED_ABI3 = 14
 
 
 def parse_python(version: str) -> tuple[int, int]:
-    major, minor = version.split(".")
+    """``3.13`` or ``3.13t`` -> ``(3, 13)``. The ``t`` is an ABI, not a version."""
+    major, minor = version.removesuffix(FREE_THREADED_SUFFIX).split(".")
     return int(major), int(minor)
 
 
-def interpreter_compatible(interpreter: str, abi: str, python: tuple[int, int]) -> bool:
+def is_free_threaded(version: str) -> bool:
+    return version.endswith(FREE_THREADED_SUFFIX)
+
+
+def interpreter_compatible(
+    interpreter: str, abi: str, python: tuple[int, int], *, free_threaded: bool = False
+) -> bool:
     """Return whether a wheel tag's interpreter/ABI pair runs on CPython ``python``.
 
-    Non-CPython builds (``pp``, ``graalpy``) and free-threaded builds (``cp313t``)
-    are rejected; stable-ABI wheels (``abi3``) run on their version and later.
+    Non-CPython builds (``pp``, ``graalpy``) are rejected. The free-threaded ABI is a
+    different ABI, not a newer one: a ``cp313t`` wheel does not run on 3.13 and a
+    ``cp313`` wheel does not run on 3.13t, so the two must match exactly. Pure-Python
+    wheels serve both.
     """
     match = _INTERPRETER.fullmatch(interpreter)
     if match is None or int(match["major"]) != python[0]:
         return False
     minor = int(match["minor"]) if match["minor"] else None
-    if match["impl"] == "py" or abi in ("abi3", "none"):
+    if match["impl"] == "py" or abi == "none":
         return minor is None or minor <= python[1]
-    return minor == python[1] and not abi.endswith("t")
+    if abi == "abi3":
+        # The limited API only reached free-threaded builds in 3.14; before that an
+        # abi3 wheel has no free-threaded build to run on.
+        if free_threaded and python[1] < _FIRST_FREE_THREADED_ABI3:
+            return False
+        return minor is None or minor <= python[1]
+    return minor == python[1] and abi.endswith(FREE_THREADED_SUFFIX) == free_threaded
 
 
 @functools.cache
@@ -55,7 +71,9 @@ def _wheel_tags(filename: str) -> frozenset[Tag] | None:
         return None
 
 
-def wheel_compatible(filename: str, platform: Platform, python: tuple[int, int]) -> bool:
+def wheel_compatible(
+    filename: str, platform: Platform, python: tuple[int, int], *, free_threaded: bool = False
+) -> bool:
     """Return whether the wheel installs on ``platform`` with CPython ``python``.
 
     Wheels with unparsable names are kept: mirroring a useless file is cheaper
@@ -66,7 +84,7 @@ def wheel_compatible(filename: str, platform: Platform, python: tuple[int, int])
         return True
     return any(
         platform.accepts_wheel_platform(tag.platform)
-        and interpreter_compatible(tag.interpreter, tag.abi, python)
+        and interpreter_compatible(tag.interpreter, tag.abi, python, free_threaded=free_threaded)
         for tag in tags
     )
 
@@ -81,6 +99,7 @@ def _parse_marker(marker: str) -> Marker | None:
 
 def _marker_environments(platform: Platform, python: str) -> Iterator[dict[str, str]]:
     # The patch version is unknown, so try both ends of the range.
+    python = python.removesuffix(FREE_THREADED_SUFFIX)
     for patch in ("0", "99"):
         full = f"{python}.{patch}"
         yield {
@@ -135,13 +154,17 @@ def select_files(
     if not targets:
         return Selection((), None)
     version = parse_python(python)
+    threaded = is_free_threaded(python)
     wheels = [f for f in package.files if f.kind == "wheel"]
     sdists = [f for f in package.files if f.kind == "sdist"]
 
-    def has_wheel(platform: Platform) -> bool:
-        return any(wheel_compatible(w.filename, platform, version) for w in wheels)
+    def fits(filename: str, platform: Platform) -> bool:
+        return wheel_compatible(filename, platform, version, free_threaded=threaded)
 
-    kept = [w for w in wheels if any(wheel_compatible(w.filename, p, version) for p in targets)]
+    def has_wheel(platform: Platform) -> bool:
+        return any(fits(w.filename, platform) for w in wheels)
+
+    kept = [w for w in wheels if any(fits(w.filename, p) for p in targets)]
     uncovered = tuple(BuildTarget(p.key, python) for p in targets if not has_wheel(p))
     if policy is SdistPolicy.ALL or (policy is SdistPolicy.NEEDED and uncovered):
         kept += sdists
