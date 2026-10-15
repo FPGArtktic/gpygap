@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from gpygap import offline
+from gpygap.advisories import run_scan
 from gpygap.checksums import write_checksums
 from gpygap.config import Config
 from gpygap.console import setup_logging
@@ -38,7 +39,7 @@ from gpygap.distmeta import DistMetaCache
 from gpygap.downloader import DownloadResult, download_missing
 from gpygap.extras import extra_requirements
 from gpygap.fetcher import Fetcher
-from gpygap.index import write_landing_page, write_simple_index
+from gpygap.index import write_advisory_page, write_landing_page, write_simple_index
 from gpygap.intake import Intake, load_intake
 from gpygap.manifest import Manifest, RunHistory, load_manifest, save_manifest
 from gpygap.models import MirrorFile, MirrorInfo
@@ -164,6 +165,12 @@ def run_sync(config: Config, options: SyncOptions) -> int:
     if verification.heal_rounds:
         manifest, _ = _commit(config, run_id, fetcher, tools, factory.files, force_prune=False)
         info = _publish(config, run_id, scope, manifest, meta, built=factory.files, gaps=factory.gaps)
+    advisories = run_scan(config, manifest)
+    if advisories is not None:
+        write_json(config.output / offline.ADVISORIES_FILE, advisories.to_json())
+        write_advisory_page(config.output, info, advisories)
+        # The landing page links the report only once it exists.
+        write_landing_page(config.output, info, _uv_archives(manifest))
     _save_fixes(config, fetcher, scope, verification)
     _write_verified(config, verification, scope)
     shutil.copy2(offline.__file__, config.output / offline.SCRIPT_NAME)
@@ -179,6 +186,8 @@ def run_sync(config: Config, options: SyncOptions) -> int:
         top=top_statuses(fetcher.resolutions, scope.top.projects, config.python_versions),
         verification=_summarize(config, verification),
         delta=delta,
+        advisories=advisories,
+        advisories_fail_on=config.advisories_fail_on,
     )
     report_path = config.state.logs / f"{run_id}-report.json"
     report.write(report_path)

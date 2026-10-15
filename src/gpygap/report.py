@@ -11,9 +11,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from gpygap.advisories import AdvisorySummary, affected_projects
 from gpygap.downloader import DownloadResult, is_present
 from gpygap.manifest import Manifest
-from gpygap.models import MirrorInfo
+from gpygap.models import SEVERITIES, MirrorInfo
 from gpygap.offline import DeltaSummary
 from gpygap.prune import PruneResult
 from gpygap.resolver import Resolution, ResolveRequest
@@ -97,11 +98,21 @@ class RunReport:
     verification: VerificationSummary | None
     """``None`` when verification is disabled."""
     delta: DeltaSummary | None
+    advisories: AdvisorySummary | None = None
+    """``None`` when advisory reporting is disabled."""
+    advisories_fail_on: str = "none"
+
+    @property
+    def vulnerable(self) -> int:
+        """Findings at or above ``security.fail_on``; zero when that is ``none``."""
+        if self.advisories is None or self.advisories_fail_on == "none":
+            return 0
+        return self.advisories.at_or_above(self.advisories_fail_on)
 
     @property
     def exit_code(self) -> int:
         incomplete = self.verification is not None and not self.verification.complete
-        return 1 if incomplete or self.downloads.failed else 0
+        return 1 if incomplete or self.downloads.failed or self.vulnerable else 0
 
     def write(self, path: Path) -> None:
         write_json(path, self._to_json())
@@ -115,6 +126,7 @@ class RunReport:
             "pruned": asdict(self.pruned),
             "top_incomplete": {k: asdict(v) for k, v in self.top.items() if v.stale or v.failed},
             "verification": asdict(self.verification) if self.verification else None,
+            "advisories": self.advisories.to_json() if self.advisories else None,
             "delta": asdict(self.delta) if self.delta else None,
         }
 
@@ -141,6 +153,8 @@ class RunReport:
         self._log_top()
         if self.verification is not None:
             _log_verification(self.verification)
+        if self.advisories is not None:
+            _log_advisories(self.advisories, self.advisories_fail_on)
         if self.delta is not None:
             log.info(
                 "Delta %s -> %s: %d files (%s), %d deletions",
@@ -164,6 +178,26 @@ class RunReport:
             len(self.top) - complete - unresolved,
             unresolved,
         )
+
+
+def _log_advisories(summary: AdvisorySummary, fail_on: str) -> None:
+    if summary.stale and not summary.findings:
+        log.warning("Advisories: not scanned (no advisory source was reachable)")
+        return
+    order = [s for s in reversed(SEVERITIES) if summary.counts.get(s)]
+    breakdown = ", ".join(f"{summary.counts[s]} {s}" for s in order) or "none"
+    log.info(
+        "Advisories: %d findings across %d projects / %d versions (%s)%s",
+        len(summary.findings),
+        summary.scanned_projects,
+        summary.scanned_versions,
+        breakdown,
+        " [from a cached advisory set]" if summary.stale else "",
+    )
+    for line in affected_projects(summary, _LISTED_PROBLEMS):
+        log.info("  %s", line)
+    if fail_on != "none" and summary.at_or_above(fail_on):
+        log.error("%d findings at or above %s (security.fail_on)", summary.at_or_above(fail_on), fail_on)
 
 
 def _log_verification(summary: VerificationSummary) -> None:
