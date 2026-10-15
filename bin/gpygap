@@ -26,6 +26,21 @@ project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 image=${GPYGAP_IMAGE:-localhost/gpygap:latest}
 engine=${GPYGAP_ENGINE:-podman}
 
+# GPYGAP_STORAGE=<dir> keeps the container image store there instead of under
+# the user's home. The builder images are several GB each and every build adds a
+# layer, which is a lot to put on a system disk that is smaller than the mirror.
+# Pointing it at the same disk as the mirror keeps the whole run on one volume.
+if [[ -n ${GPYGAP_STORAGE:-} ]]; then
+    mkdir -p "$GPYGAP_STORAGE/storage" "$GPYGAP_STORAGE/run"
+    cat > "$GPYGAP_STORAGE/storage.conf" <<EOF
+[storage]
+driver = "overlay"
+graphroot = "$GPYGAP_STORAGE/storage"
+runroot = "$GPYGAP_STORAGE/run"
+EOF
+    export CONTAINERS_STORAGE_CONF="$GPYGAP_STORAGE/storage.conf"
+fi
+
 # Rebuilds only when the sources changed; otherwise served from the engine's cache.
 "$engine" build --quiet --file "$project_dir/Containerfile" --tag "$image" "$project_dir" >/dev/null
 

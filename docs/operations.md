@@ -19,6 +19,28 @@ Exit codes: `0` complete; `1` incomplete (still missing after healing, or downlo
 failed); `2` configuration error; `130` interrupted (rerun to resume: resolutions younger
 than `max_age_hours` are reused, downloaded files are kept).
 
+## Keeping it off the system disk
+
+The mirror and its state go wherever `mirror.output` and `mirror.state_dir` point, but
+the container images do not: podman and docker keep those under the user's home by
+default. The builder images are several gigabytes each and every wheel build adds a
+layer, which is a lot to put on a root filesystem that is smaller than the mirror it is
+helping to build.
+
+```bash
+export GPYGAP_STORAGE=/srv/gpygap-containers   # same disk as the mirror
+bin/gpygap sync
+```
+
+`bin/gpygap` then writes a `storage.conf` there and points `CONTAINERS_STORAGE_CONF` at
+it, so the image store, the container layers and the sibling builders all live on that
+disk. The change is scoped to gpygap: other containers on the machine keep using the
+default store and are not moved, stopped or otherwise disturbed.
+
+Expect a slower first run on a spinning disk. Unpacking image layers is many small
+writes, and the download phase can saturate a 5400 rpm drive long before it saturates
+the network.
+
 ## Monthly routine
 
 1. `bin/gpygap sync --export-delta <dir>` (cron/systemd timer on the 1st).
