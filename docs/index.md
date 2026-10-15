@@ -13,6 +13,7 @@ Read in this order when you are new to the project:
 | [operations.md](operations.md) | Running it (container), monthly routine, transfer, what to do when a run fails. |
 | [online-on-windows.md](online-on-windows.md) | Running the online side on Windows, where it can build its own Windows wheels. |
 | [development.md](development.md) | Working on the code: commands, module layout, invariants, style. |
+| [ci.md](ci.md) | What CI runs on every push, what each job proves, and what it does not. |
 | [decisions.md](decisions.md) | Why things are the way they are; read before changing a design choice. |
 
 In the repository root, next to these pages:

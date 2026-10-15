@@ -65,6 +65,7 @@ nav:
   - Operations: operations.md
   - Online side on Windows: online-on-windows.md
   - Development: development.md
+  - Continuous integration: ci.md
   - Design decisions: decisions.md
 
 markdown_extensions:
