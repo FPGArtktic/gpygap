@@ -279,21 +279,21 @@ DVD/Blu-ray or a data diode; see [Operations](operations.md).
 ```mermaid
 sequenceDiagram
     participant Op as operator
-    participant Off as gpygap_offline.py
+    participant Script as gpygap_offline.py
     participant M as /srv/gpygap
     participant Dev as developer
 
-    Op->>Off: apply DELTA /srv/gpygap
-    Off->>Off: SHA-256 of every payload file
-    Off->>Off: MIRROR-VERSION matches what the delta expects?
-    Off->>M: new packages first
-    Off->>M: then the index
-    Off->>M: deletions last
-    Off->>Off: whole mirror vs MIRROR-SHA256SUMS
-    Off-->>Op: mirror check: OK
-    Op->>Off: smoke-test http://pypi.example.local
-    Off->>M: re-run the online checks over HTTP
-    Off-->>Op: failures, or nothing
+    Op->>Script: apply DELTA /srv/gpygap
+    Script->>Script: SHA-256 of every payload file
+    Script->>Script: MIRROR-VERSION matches what the delta expects?
+    Script->>M: new packages first
+    Script->>M: then the index
+    Script->>M: deletions last
+    Script->>Script: whole mirror vs MIRROR-SHA256SUMS
+    Script-->>Op: mirror check: OK
+    Op->>Script: smoke-test http://pypi.example.local
+    Script->>M: re-run the online checks over HTTP
+    Script-->>Op: failures, or nothing
     Dev->>M: uv pip install / pip install
 ```
 

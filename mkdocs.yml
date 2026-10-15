@@ -5,6 +5,7 @@ site_name: gpygap
 site_description: Offline PyPI mirror of the most popular projects, for air-gapped networks
 copyright: Copyright &copy; 2026 <a href="https://fpgartktic.github.io/">Mateusz Okulanis</a> &middot; GPL-3.0-or-later
 
+site_url: https://gpygap.readthedocs.io/
 docs_dir: docs
 repo_url: https://github.com/FPGArtktic/gpygap
 repo_name: FPGArtktic/gpygap
@@ -12,18 +13,44 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  icon:
+    logo: material/package-variant-closed
+    repo: fontawesome/brands/github
   features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
     - navigation.sections
     - navigation.top
-    - content.code.copy
+    - navigation.footer
     - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tooltips
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: indigo
+      accent: indigo
       toggle: { icon: material/weather-night, name: Switch to dark mode }
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: black
+      accent: indigo
       toggle: { icon: material/weather-sunny, name: Switch to light mode }
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/FPGArtktic/gpygap
+      name: gpygap on GitHub
+    - icon: material/web
+      link: https://fpgartktic.github.io/
+      name: fpgartktic.github.io
+  generator: false
 
 # Explicit, in the reading order index.md recommends. A page missing from here is a
 # warning, and --strict turns warnings into failures: adding a doc means adding it below.
@@ -41,8 +68,17 @@ nav:
   - Design decisions: decisions.md
 
 markdown_extensions:
+  - abbr
   - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
   - tables
+  - pymdownx.details
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.smartsymbols
   - toc:
       permalink: true
   - pymdownx.highlight:
@@ -55,8 +91,6 @@ markdown_extensions:
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.inlinehilite
-  - attr_list
-  - md_in_html
 
 plugins:
   - search

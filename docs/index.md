@@ -26,6 +26,11 @@ In the repository root, next to these pages:
 | `CONTRIBUTING.md` | How to propose a change: setup, what a finished change looks like, commit style. |
 | `LICENSE` | GPL-3.0-or-later. |
 
+## Author
+
+[Mateusz Okulanis](https://fpgartktic.github.io/) &mdash; <https://fpgartktic.github.io/>.
+Licensed GPL-3.0-or-later.
+
 ## Glossary
 
 | Term | Meaning |

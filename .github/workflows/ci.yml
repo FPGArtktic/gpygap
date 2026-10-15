@@ -93,6 +93,26 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - run: uv run --frozen --group docs mkdocs build --strict
+      - name: Render every diagram
+        # mkdocs --strict cannot see inside a ```mermaid fence, so a diagram that
+        # does not parse reaches the published site as "Syntax error in text" and
+        # is noticed by a reader. Rendering them here is the only check there is.
+        run: |
+          python3 .github/ci/extract-mermaid.py docs "$RUNNER_TEMP/mermaid"
+          printf '%s\n' '{"args": ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]}' \
+            > "$RUNNER_TEMP/puppeteer.json"
+          failed=0
+          for diagram in "$RUNNER_TEMP"/mermaid/*.mmd; do
+            if npx -y @mermaid-js/mermaid-cli@11 -p "$RUNNER_TEMP/puppeteer.json" \
+                 -i "$diagram" -o "$diagram.svg" >/dev/null 2>"$diagram.err"; then
+              echo "ok   $(basename "$diagram")"
+            else
+              echo "FAIL $(basename "$diagram")"
+              sed -n '1,12p' "$diagram.err"
+              failed=1
+            fi
+          done
+          exit $failed
 
   mirror:
     # Builds the tiny CI mirror the consume-* jobs install from.
