@@ -238,6 +238,24 @@ def test_ingest_is_a_no_op_without_a_directory(tmp_path: Path) -> None:
     assert factory.ingest({"packages/spam/spam-1.0.tar.gz": {WINDOWS}}) == []
 
 
+def test_one_sdists_universal_wheel_does_not_erase_another_sdists_gap(tmp_path: Path) -> None:
+    # The bug this pins: docopt builds to py3-none-any and covers win-amd64 for
+    # docopt. llist is a C extension and still has nothing for win-amd64. Comparing
+    # targets without their sdist made the first hide the second, and the file a
+    # Windows builder reads came out empty while the run reported four missing.
+    config = config_at(tmp_path)
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+    factory._gaps[("packages/llist/llist-0.7.1.tar.gz", WINDOWS)] = BuildGap(
+        "packages/llist/llist-0.7.1.tar.gz", WINDOWS, "no-builder"
+    )
+    universal = tmp_path / "gpygap" / "packages" / "docopt" / "docopt-0.6.2-py3-none-any.whl"
+    universal.parent.mkdir(parents=True)
+    universal.write_text("w", "utf-8")
+    factory._register("packages/docopt/docopt-0.6.2.tar.gz", "docopt", universal.name, {WINDOWS})
+
+    assert [g.sdist for g in factory.gaps] == ["packages/llist/llist-0.7.1.tar.gz"]
+
+
 def test_gaps_drop_out_once_something_covers_them(tmp_path: Path) -> None:
     config = config_at(tmp_path)
     factory = WheelFactory(config)  # type: ignore[arg-type]

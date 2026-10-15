@@ -216,9 +216,13 @@ class WheelFactory:
         a developer machine still has to compile -- and so a Windows builder knows
         exactly what to build.
         """
-        covered = {t for wheel in self._wheels.values() for t in wheel.targets}
+        # Per sdist, not globally: docopt's py3-none-any wheel covers win-amd64 for
+        # docopt and for nothing else. Comparing targets alone made one universal
+        # wheel erase every Windows gap in the mirror, and the file a Windows
+        # builder reads came out empty while the run said four were missing.
+        covered = {(wheel.sdist, t) for wheel in self._wheels.values() for t in wheel.targets}
         return sorted(
-            (gap for (_, target), gap in self._gaps.items() if target not in covered),
+            (gap for key, gap in self._gaps.items() if key not in covered),
             key=lambda g: (g.sdist, g.target),
         )
 
