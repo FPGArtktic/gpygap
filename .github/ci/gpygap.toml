@@ -37,7 +37,9 @@ external_dir = "../../ci-windows-wheels"
 # The Python versions the distro images in consume-linux ship, plus one ahead:
 # Debian 12 -> 3.11, UBI 9 -> 3.12, Alpine 3.20 -> 3.12, Arch -> 3.13 (rolling).
 python = ["3.11", "3.12", "3.13", "3.14"]
-platforms = ["linux-x86_64", "win-amd64"]
+# musl is in here because the Alpine leg of consume-linux is a real target, not a
+# curiosity: a manylinux wheel does not install there.
+platforms = ["linux-x86_64", "linux-musl-x86_64", "win-amd64"]
 
 [sync]
 # uv archives and python-build-standalone builds are hundreds of MB and the runners

@@ -131,8 +131,10 @@ jobs:
           name: ci-mirror
           path: ${{ runner.temp }}
       - name: Unpack the mirror
-        shell: bash
-        run: mkdir -p "$RUNNER_TEMP/mirror" && tar -xzf "$RUNNER_TEMP/ci-mirror.tar.gz" -C "$RUNNER_TEMP/mirror"
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\mirror" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\ci-mirror.tar.gz" -C "$env:RUNNER_TEMP\mirror"
       - name: Build what the mirror could not
         shell: bash
         run: python -I .github/ci/build-windows-wheels.py "$RUNNER_TEMP/mirror" "$RUNNER_TEMP/wheels"
@@ -140,7 +142,6 @@ jobs:
         with:
           name: windows-wheels-${{ matrix.python }}
           path: ${{ runner.temp }}/wheels
-          if-no-files-found: ignore
           retention-days: 1
 
   mirror-merge:
@@ -178,30 +179,37 @@ jobs:
           # metadata bug bites; keeping it in the matrix is what keeps the offline
           # pip bootstrap below honest.
           - name: debian-12
+            platform: linux-x86_64
             image: debian:12
             setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
             python: python3
           - name: debian-13
+            platform: linux-x86_64
             image: debian:13
             setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
             python: python3
           - name: ubuntu-24.04
+            platform: linux-x86_64
             image: ubuntu:24.04
             setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
             python: python3
           - name: ubuntu-26.04
+            platform: linux-x86_64
             image: ubuntu:26.04
             setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
             python: python3
           - name: rhel
+            platform: linux-x86_64
             image: registry.access.redhat.com/ubi9/ubi
-            setup: dnf -y install python3.12 curl && dnf clean all
+            setup: dnf -y install python3.12 && dnf clean all
             python: python3.12
           - name: arch
+            platform: linux-x86_64
             image: archlinux:latest
             setup: pacman -Sy --noconfirm python curl
             python: python3
           - name: alpine
+            platform: linux-musl-x86_64
             image: alpine:3.20
             setup: apk add --no-cache python3 curl ca-certificates
             python: python3
@@ -245,7 +253,7 @@ jobs:
                      --disable-pip-version-check --index-url file:///mirror/simple \
                      --upgrade pip &&
                    /venv/bin/python -m pip --version &&
-                   /venv/bin/python -I /consume.py /mirror linux-x86_64 pip,uv'
+                   /venv/bin/python -I /consume.py /mirror ${{ matrix.platform }} pip,uv'
 
   consume-windows:
     needs: mirror-merge
@@ -269,8 +277,10 @@ jobs:
           name: ci-mirror-merged
           path: ${{ runner.temp }}
       - name: Unpack the mirror
-        shell: bash
-        run: mkdir -p "$RUNNER_TEMP/mirror" && tar -xzf "$RUNNER_TEMP/ci-mirror.tar.gz" -C "$RUNNER_TEMP/mirror"
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\mirror" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\ci-mirror.tar.gz" -C "$env:RUNNER_TEMP\mirror"
       - name: Verify every checksum
         shell: bash
         run: python -I "$RUNNER_TEMP/mirror/gpygap_offline.py" verify "$RUNNER_TEMP/mirror"
