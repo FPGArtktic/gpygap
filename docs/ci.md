@@ -70,6 +70,13 @@ sequenceDiagram
     Merge-->>All: round two: install from this, from scratch
 ```
 
+Who builds what, because the two are easy to run together:
+
+| | Builds wheels | Builds the mirror |
+| --- | --- | --- |
+| `mirror`, `mirror-merge` (ubuntu) | yes — manylinux and musllinux, in sibling containers | yes |
+| `wheels-windows` (windows) | **yes** — `win_amd64`, under MSVC | no |
+
 **The mirror is assembled on Linux both times.** `mirror` and `mirror-merge` are both
 `ubuntu-latest` jobs running the same `gpygap sync` against the same configuration. The
 Windows runner never builds a mirror: it has no configuration, no state directory, no
