@@ -101,6 +101,22 @@ jobs = 2
 # Seconds allowed for one wheel build.
 timeout = 1800
 
+[security]
+# Match everything the mirror publishes against the OSV advisory set and write the
+# result to MIRROR-ADVISORIES.json, which travels with the mirror: the people who
+# cannot query an API are the ones who most need the list. A snapshot at build time,
+# and advisory data has false positives and gaps -- it is a report, not a gate.
+advisories = true
+# Where the advisory set comes from (one zip per ecosystem); first reachable wins,
+# and an unreachable source falls back to the cached copy rather than scanning nothing.
+osv_sources = [
+    "https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip",
+]
+# Fail the run when something at or above this severity is found:
+# "none", "low", "moderate", "high" or "critical". Mirroring the top 1000 projects
+# will always find something, so this is off by default.
+fail_on = "none"
+
 [performance]
 # Parallel uv resolutions.
 jobs = 8

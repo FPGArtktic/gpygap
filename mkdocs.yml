@@ -33,6 +33,7 @@ nav:
   - The pipeline, end to end: pipeline.md
   - Wheels we build: wheels.md
   - Verification: verification.md
+  - Known vulnerabilities: advisories.md
   - Files and formats: file-formats.md
   - Operations: operations.md
   - Online side on Windows: online-on-windows.md

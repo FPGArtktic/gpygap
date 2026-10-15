@@ -6,6 +6,7 @@ Read in this order when you are new to the project:
 | --- | --- |
 | [architecture.md](architecture.md) | What happens in a run, which module does what, how data flows. |
 | [verification.md](verification.md) | How the tool proves the offline mirror is complete, and how it heals gaps. |
+| [advisories.md](advisories.md) | The vulnerability report the mirror carries with it. |
 | [file-formats.md](file-formats.md) | Every file the tool writes: mirror layout, deltas, state directory. |
 | [pipeline.md](pipeline.md) | The whole run from the top-1000 list to an import offline, stage by stage, with diagrams. |
 | [wheels.md](wheels.md) | The wheels the mirror builds itself, and why Windows is the exception. |
@@ -49,4 +50,5 @@ In the repository root, next to these pages:
 | built wheel | A wheel this mirror compiled because upstream published none; `origin = "built"`, no URL. |
 | universal wheel | `py3-none-any`: pure Python, installs on every target whatever machine built it. |
 | gap | A target still without a wheel after building, listed in `MIRROR-GAPS.json`. |
+| finding | One advisory against one version the mirror holds (`MIRROR-ADVISORIES.json`, `advisories.html`). |
 | external wheels | Wheels built on another machine (a Windows host) and adopted from `build.external_dir`. |

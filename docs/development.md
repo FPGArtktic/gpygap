@@ -54,6 +54,7 @@ verification.
 | `prune.py` | Deletes files no retained run requires, behind a ratio safety limit. |
 | `index.py` | Static `simple/` pages and the landing `index.html`. |
 | `verify.py` | Install checks and build checks against the `file://` index, offline. |
+| `advisories.py` | Matches everything published against the OSV advisory set. |
 | `checksums.py` | `MIRROR-SHA256SUMS`. |
 | `tools.py` | uv release archives and python-build-standalone builds. |
 | `offline.py` | **Standalone, stdlib only, Python 3.9.** Delta export/apply, mirror verify, smoke test. Shipped as `gpygap_offline.py`. |
