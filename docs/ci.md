@@ -199,6 +199,28 @@ It asserts three things, and the third is there because of a specific failure:
 The top 1000 is still not run here. It is 80 GB and over an hour, which belongs in a
 scheduled run rather than on every push — see the scale caveat below.
 
+## Once a month, the whole top list
+
+`monthly.yml` runs on the first of the month and on demand. A thousand projects, built,
+verified and scanned, which is where resolution volume and an hour of uptime can break
+what three minutes cannot.
+
+It runs with `extras = false`, and that is a constraint rather than a preference. A
+standard GitHub-hosted runner has **14 GB of SSD**; the full scope *with* extras is about
+80 GB, nearly all of it the ML stack and its CUDA libraries pulled in by the extras of a
+handful of projects. Without them the same thousand projects come to roughly 25 GB, and
+the job deletes the preinstalled toolchains it does not use — around 25 GB of Android,
+.NET, GHC and Swift — before it starts. It prints `df` before and after, and runs
+`--plan-only` first so a plan that does not fit says so in a minute rather than failing
+an hour in with a confusing ENOSPC.
+
+It keeps the report, not the mirror: `MIRROR-GAPS.json`, `MIRROR-ADVISORIES.json`,
+`MIRROR-INFO.json`, the run report and the errors log, for ninety days.
+
+**The 80 GB run with extras is not done here and cannot be.** It needs a machine with a
+disk — which is exactly what an operator running this has. It takes about 75 minutes and
+produces 2936 projects across 10896 files.
+
 ## Releases
 
 A tag `v*` runs `release.yml`: it refuses a tag whose version disagrees with
@@ -211,10 +233,10 @@ works.
 
 Worth knowing before trusting a green tick:
 
-- **The top 1000.** `mirror-scale` runs fifty projects; the real thing is a thousand,
-  roughly 80 GB, over an hour and 1333 targets needing a wheel. Timeouts, memory and
-  prune ratios behave differently there, and so does anything that only breaks after an
-  hour of uptime.
+- **The top 1000 with extras.** The monthly job runs a thousand projects without
+  them, at about 25 GB, which is what a 14 GB runner can be made to hold. With extras
+  the same scope is 80 GB and 1333 targets needing a wheel; that run happens on an
+  operator's own machine, and prune ratios and memory behave differently there.
 - **The Windows online machine, fully.** `mirror-windows` does drive gpygap natively on
   a Windows runner and installs from the result, so the mirror-assembly half is covered.
   What is not covered is that host also building Linux wheels: that needs Docker Desktop

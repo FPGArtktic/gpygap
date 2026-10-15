@@ -33,3 +33,7 @@ htmlcov/
 # Scale run in CI
 /scale-mirror/
 /scale-mirror-state/
+
+# Monthly CI run
+/monthly-mirror/
+/monthly-mirror-state/

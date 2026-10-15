@@ -1,0 +1,51 @@
+# The monthly run: every project on the top list, on a GitHub-hosted runner.
+#
+# `extras = false` is not a shortcut, it is the only thing that fits. A standard
+# runner has 14 GB of SSD and the full scope with extras is about 80 GB -- most of it
+# the ML stack and its CUDA libraries, pulled in by extras of a handful of projects.
+# Without them the same thousand projects come to roughly 25 GB, and the job frees
+# what it can from the image before it starts.
+#
+# What this buys that the per-push scale run does not: a thousand projects resolved
+# against the real index, every sdist among them that some target has no wheel for
+# actually built, and the whole thing verified offline. Five thousand resolutions
+# rather than two hundred, and an hour of uptime rather than three minutes -- which
+# is where anything that only breaks after a while has to show up.
+#
+# The extras-inclusive 80 GB run belongs on a machine with a disk. See docs/ci.md.
+
+[mirror]
+output = "../../monthly-mirror"
+state_dir = "../../monthly-mirror-state"
+
+[packages]
+top = 1000
+extras = false
+extra = ["pip", "docopt", "pysendfile; sys_platform == 'linux'", "llist"]
+sdists = "needed"
+
+[targets]
+python = ["3.11", "3.12", "3.13"]
+platforms = ["linux-x86_64", "win-amd64"]
+
+[sync]
+with_tools = false
+keep_runs = 1
+verify = true
+build_check = true
+# One round, not two: at this size a second heal costs more time than it buys, and
+# what it would have fixed is in MIRROR-GAPS.json either way.
+heal_rounds = 1
+
+[build]
+wheels = true
+jobs = 4
+
+[security]
+advisories = true
+fail_on = "none"
+
+[performance]
+jobs = 8
+download_jobs = 16
+resolve_timeout = 900
