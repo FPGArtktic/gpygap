@@ -93,6 +93,18 @@ jobs:
             'RUN ${{ matrix.python }} -m venv /venv' \
             'RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh' \
             | docker build -t gpygap-consume:${{ matrix.name }} -
+      - name: Prove the container really has no network
+        # Everything below claims to work offline. If this request succeeded, the
+        # claim would be untested and the job would pass for the wrong reason.
+        run: |
+          if docker run --rm --network none gpygap-consume:${{ matrix.name }} \
+               /venv/bin/python -c \
+               "import urllib.request; urllib.request.urlopen('https://pypi.org/simple/', timeout=15)" \
+               2>/dev/null; then
+            echo "pypi.org was reachable with --network none: this job proves nothing" >&2
+            exit 1
+          fi
+          echo "outbound HTTPS is blocked"
       - name: Verify every checksum, offline
         run: |
           docker run --rm --network none \
@@ -142,18 +154,47 @@ jobs:
       - name: Install uv
         run: irm https://astral.sh/uv/install.ps1 | iex
         shell: powershell
-      - name: Verify every checksum
+      - name: Cut python and uv off from the network
+        # There is no --network none on a native runner. A proxy pointed at a closed
+        # port only works because pip and uv choose to honour it; an outbound
+        # firewall rule does not depend on their cooperation. Best effort, because
+        # the step after this one is what actually decides whether the block worked.
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          foreach ($tool in 'python', 'uv') {
+            $path = (Get-Command $tool -ErrorAction SilentlyContinue).Source
+            if ($path) {
+              New-NetFirewallRule -DisplayName "gpygap-block-$tool" -Direction Outbound `
+                -Program $path -Action Block -Profile Any -ErrorAction Stop | Out-Null
+              Write-Host "blocked outbound: $path"
+            }
+          }
+
+      - name: Prove the network is really gone
         shell: bash
         env:
-          # There is no --network none on a native runner, so any accidental
-          # outbound request goes to a closed port instead of quietly succeeding
-          # against PyPI. Scoped to the steps that must be offline: checkout,
-          # setup-python and the uv installer all need GitHub.
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
+        run: |
+          if python -c "import urllib.request; urllib.request.urlopen('https://pypi.org/simple/', timeout=20)" 2>/dev/null; then
+            echo "pypi.org was reachable: this job cannot prove anything about offline installs" >&2
+            exit 1
+          fi
+          echo "outbound HTTPS is blocked"
+
+      - name: Verify every checksum, offline
+        shell: bash
+        env:
+          # Both mechanisms stay on: the firewall rule above, and a proxy pointed at
+          # a closed port for anything that bypasses it. Scoped to the steps that
+          # must be offline: checkout, setup-python and the uv installer need GitHub.
           HTTP_PROXY: http://127.0.0.1:9
           HTTPS_PROXY: http://127.0.0.1:9
           NO_PROXY: ""
         run: python -I "$RUNNER_TEMP/mirror/gpygap_offline.py" verify "$RUNNER_TEMP/mirror"
-      - name: Install from wheels alone, with pip and uv
+      - name: Install from wheels alone, offline, with pip and uv
         shell: bash
         env:
           HTTP_PROXY: http://127.0.0.1:9

@@ -94,9 +94,17 @@ flowchart LR
     F -->|no| H["job passes"]
 ```
 
-- **`--network none`** is what makes it a proof rather than a demonstration. On the
-  Windows runner, where that flag does not exist, `HTTP_PROXY` points at a closed port so
-  an accidental request fails loudly instead of quietly succeeding against PyPI.
+- **The network is cut, and the cut is proven.** Linux containers run with
+  `--network none`. Windows has no such flag, so the runner gets an outbound firewall
+  rule for `python.exe` and `uv.exe` plus a proxy pointed at a closed port — belt and
+  braces, because a proxy only works for tools that choose to honour it and a firewall
+  rule does not need their cooperation.
+
+    Both platforms then run the same control: reach for `https://pypi.org/simple/` and
+    **require it to fail**. If it succeeds the job stops there, because everything after
+    it would be passing for the wrong reason. A test of offline behaviour that never
+    checks it is actually offline is the easiest kind of green tick to get and the least
+    worth having.
 - **`--only-binary :all:`** is the claim itself. Without it, a missing wheel is a slow
   install; with it, a missing wheel is a failed job.
 - **Both pip and uv.** They disagree — they read the PEP 658 sidecars differently — and

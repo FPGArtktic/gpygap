@@ -13,7 +13,7 @@ system &mdash; not asserted:
 [![RHEL 9](https://img.shields.io/badge/RHEL%209%20%28UBI%29-verified%20offline-EE0000?logo=redhat&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-verified%20offline-1793D1?logo=archlinux&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 [![Alpine](https://img.shields.io/badge/Alpine-verified%20offline-0D597F?logo=alpinelinux&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
-[![Windows](https://img.shields.io/badge/Windows-verified-0078D4?logo=windows&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
+[![Windows](https://img.shields.io/badge/Windows-verified%20offline-0078D4?logo=windows&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 
 An offline PyPI mirror for air-gapped networks: **the top 1000 PyPI projects plus your own
 packages, with every dependency, extra and build requirement**, for Windows and Linux and
