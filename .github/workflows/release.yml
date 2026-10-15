@@ -69,8 +69,10 @@ jobs:
         run: |
           image=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           cat > notes.md <<EOF
-          Verified on Debian 12, RHEL 9 (UBI), Arch and Alpine containers with the network
-          switched off, and on Windows, by installing from a mirror this release built.
+          Verified by installing from a mirror this release built, with both pip and uv and
+          \`--only-binary :all:\`, so a source build fails the run: Debian 12 and 13, Ubuntu
+          24.04 and 26.04, RHEL 9 (UBI), Arch and Alpine containers with the network switched
+          off, and Windows on Python 3.12 and 3.13.
 
           \`\`\`
           podman pull $image:${GITHUB_REF_NAME#v}
