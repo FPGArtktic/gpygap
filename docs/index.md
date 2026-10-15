@@ -1,22 +1,74 @@
 # gpygap documentation
 
-Read in this order when you are new to the project:
+An offline PyPI mirror for air-gapped networks: the top 1000 PyPI projects plus your own
+packages, with every dependency, extra and build requirement, for Windows and Linux and
+several Python versions. The online side builds the wheels upstream never published, so
+installing on the other side of the air gap needs no compiler.
 
-| Document | Answers |
-| --- | --- |
-| [architecture.md](architecture.md) | What happens in a run, which module does what, how data flows. |
-| [verification.md](verification.md) | How the tool proves the offline mirror is complete, and how it heals gaps. |
-| [advisories.md](advisories.md) | The vulnerability report the mirror carries with it. |
-| [file-formats.md](file-formats.md) | Every file the tool writes: mirror layout, deltas, state directory. |
-| [pipeline.md](pipeline.md) | The whole run from the top-1000 list to an import offline, stage by stage, with diagrams. |
-| [wheels.md](wheels.md) | The wheels the mirror builds itself, and why Windows is the exception. |
-| [operations.md](operations.md) | Running it (container), monthly routine, transfer, what to do when a run fails. |
-| [online-on-windows.md](online-on-windows.md) | Running the online side on Windows, where it can build its own Windows wheels. |
-| [development.md](development.md) | Working on the code: commands, module layout, invariants, style. |
-| [ci.md](ci.md) | What CI runs on every push, what each job proves, and what it does not. |
-| [decisions.md](decisions.md) | Why things are the way they are; read before changing a design choice. |
+<div class="grid cards" markdown>
 
-In the repository root, next to these pages:
+-   :material-sitemap:{ .lg .middle } **How it works**
+
+    ---
+
+    One run from end to end, the modules that perform it, and how the mirror proves
+    itself complete before it ships.
+
+    [:octicons-arrow-right-24: The pipeline, end to end](pipeline.md) ·
+    [Architecture](architecture.md) ·
+    [Verification](verification.md)
+
+-   :material-package-variant-closed:{ .lg .middle } **Wheels we build**
+
+    ---
+
+    What happens when a project publishes no wheel for a target, why Windows is the
+    exception, and how a Windows machine hands one back.
+
+    [:octicons-arrow-right-24: Wheels we build](wheels.md)
+
+-   :material-server:{ .lg .middle } **Running it**
+
+    ---
+
+    The monthly routine, moving deltas by USB, DVD or a data diode, and what to do when
+    a run fails.
+
+    [:octicons-arrow-right-24: Operations](operations.md) ·
+    [Online side on Windows](online-on-windows.md)
+
+-   :material-shield-alert:{ .lg .middle } **Known vulnerabilities**
+
+    ---
+
+    Every version the mirror holds, matched against the OSV advisory set, in a report
+    that travels with it.
+
+    [:octicons-arrow-right-24: Advisories](advisories.md)
+
+-   :material-file-tree:{ .lg .middle } **Files and formats**
+
+    ---
+
+    Everything the tool writes: the mirror layout, the delta format, the state
+    directory.
+
+    [:octicons-arrow-right-24: Files and formats](file-formats.md)
+
+-   :material-wrench:{ .lg .middle } **Working on it**
+
+    ---
+
+    Commands, module layout, the invariants worth reading twice, and what CI proves on
+    every push.
+
+    [:octicons-arrow-right-24: Development](development.md) ·
+    [Continuous integration](ci.md) ·
+    [Design decisions](decisions.md)
+
+</div>
+
+## In the repository
 
 | File | What it is |
 | --- | --- |

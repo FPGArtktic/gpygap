@@ -1,0 +1,33 @@
+/* Small corrections to the Material defaults, nothing structural. */
+
+/* Tables here are reference material and get read column by column, so they
+   should not be squeezed into half the page. */
+.md-typeset table:not([class]) {
+  display: table;
+  width: 100%;
+  font-size: 0.72rem;
+}
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+}
+
+/* Mermaid diagrams are the main illustration in these pages; give them room
+   and keep them centred rather than left-aligned against the text. */
+.md-typeset .mermaid {
+  margin: 1.4em auto;
+  text-align: center;
+}
+
+/* Landing-page cards: a touch more breathing room than the default. */
+.md-typeset .grid.cards > ul > li {
+  padding: 1rem 1.2rem;
+  border-radius: 0.3rem;
+}
+.md-typeset .grid.cards > ul > li > hr {
+  margin: 0.6rem 0;
+}
+
+/* The glossary is long; alternating rows make it scannable. */
+.md-typeset table:not([class]) tbody tr:nth-child(odd) {
+  background-color: var(--md-default-fg-color--lightest);
+}

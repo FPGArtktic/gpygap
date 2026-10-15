@@ -20,7 +20,10 @@ theme:
     - navigation.instant
     - navigation.instant.progress
     - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
+    - navigation.indexes
     - navigation.top
     - navigation.footer
     - toc.follow
@@ -29,6 +32,7 @@ theme:
     - search.share
     - content.code.copy
     - content.code.annotate
+    - content.tabs.link
     - content.tooltips
   palette:
     - media: "(prefers-color-scheme: light)"
@@ -55,18 +59,21 @@ extra:
 # Explicit, in the reading order index.md recommends. A page missing from here is a
 # warning, and --strict turns warnings into failures: adding a doc means adding it below.
 nav:
-  - Overview: index.md
-  - Architecture: architecture.md
-  - The pipeline, end to end: pipeline.md
-  - Wheels we build: wheels.md
-  - Verification: verification.md
-  - Known vulnerabilities: advisories.md
-  - Files and formats: file-formats.md
-  - Operations: operations.md
-  - Online side on Windows: online-on-windows.md
-  - Development: development.md
-  - Continuous integration: ci.md
-  - Design decisions: decisions.md
+  - Home: index.md
+  - How it works:
+      - architecture.md
+      - pipeline.md
+      - wheels.md
+      - verification.md
+      - advisories.md
+      - file-formats.md
+  - Running it:
+      - operations.md
+      - online-on-windows.md
+  - Contributing:
+      - development.md
+      - ci.md
+      - decisions.md
 
 markdown_extensions:
   - abbr
@@ -92,6 +99,14 @@ markdown_extensions:
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 plugins:
   - search
+
+extra_css:
+  - stylesheets/extra.css
