@@ -73,6 +73,10 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+# A floor, not a target. The unit suite covers pure logic and filesystem
+# behaviour; everything that needs a container or a real uv is covered by the CI
+# jobs instead, so this will never reach 100 and should not be made to.
+fail_under = 60
 exclude_also = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
