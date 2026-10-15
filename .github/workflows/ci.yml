@@ -38,16 +38,45 @@ jobs:
       - run: uv run --frozen mypy
 
   unit:
-    runs-on: ubuntu-latest
+    # Windows is in here, not only in the consume jobs. The unit suite is full of
+    # path handling -- mirror-relative POSIX paths, file:// index URLs, temporary
+    # directories -- and a separator assumption is exactly the kind of bug that
+    # passes on Linux and greets a developer in Warsaw on a Monday. Coverage is
+    # collected on every leg; it is not Linux-specific either.
+    name: unit (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          # The ends of the range on Linux only; Windows runs the two versions
+          # developers there actually have.
+          - { os: windows-latest, python: "3.11" }
+          - { os: windows-latest, python: "3.14" }
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
+      - name: Install uv (Linux)
+        if: runner.os == 'Linux'
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - run: uv run --python ${{ matrix.python }} pytest -q
+      - name: Install uv (Windows)
+        if: runner.os == 'Windows'
+        run: irm https://astral.sh/uv/install.ps1 | iex
+        shell: powershell
+      - name: Tests with coverage
+        run: uv run --python ${{ matrix.python }} pytest -q --cov-report=term-missing:skip-covered
+      - name: Coverage into the job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Coverage — ${{ matrix.os }}, Python ${{ matrix.python }}"
+            echo
+            echo '```'
+            uv run --python ${{ matrix.python }} coverage report --skip-covered 2>/dev/null | tail -30
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   offline-py39:
     # offline.py ships to the air-gapped side on its own and must run on the oldest
