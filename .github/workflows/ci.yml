@@ -282,11 +282,6 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.12", "3.13"]
-    env:
-      # No --network none on a native runner, so send any accidental outbound request
-      # to a closed port instead of letting it silently succeed against PyPI.
-      HTTP_PROXY: http://127.0.0.1:9
-      HTTPS_PROXY: http://127.0.0.1:9
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -303,6 +298,14 @@ jobs:
           tar -xzf "$env:RUNNER_TEMP\ci-mirror.tar.gz" -C "$env:RUNNER_TEMP\mirror"
       - name: Verify every checksum
         shell: bash
+        env:
+          # There is no --network none on a native runner, so any accidental
+          # outbound request goes to a closed port instead of quietly succeeding
+          # against PyPI and making this job prove nothing. Scoped to this step:
+          # checkout, setup-python and the uv installer all need GitHub.
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
         run: python -I "$RUNNER_TEMP/mirror/gpygap_offline.py" verify "$RUNNER_TEMP/mirror"
       - name: Install uv
         run: irm https://astral.sh/uv/install.ps1 | iex
@@ -310,4 +313,8 @@ jobs:
 
       - name: Install from wheels alone, with pip and uv
         shell: bash
+        env:
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
         run: python -I .github/ci/consume.py "$RUNNER_TEMP/mirror" win-amd64 pip,uv
