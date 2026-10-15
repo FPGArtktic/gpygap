@@ -1,0 +1,45 @@
+# A Windows online machine, as far as a GitHub-hosted runner can imitate one.
+#
+# What this proves: gpygap assembles a working mirror when the machine driving it is
+# Windows -- resolution, selection, download, the simple index, checksums and the
+# offline verification, all over Windows paths and file:// URLs. That is where the
+# portability risk actually lives, and nothing else tests it.
+#
+# What it cannot prove: building the Linux wheels. That needs Linux containers, and a
+# GitHub-hosted Windows runner has Docker in Windows-container mode and no Docker
+# Desktop. A real Windows online machine with Docker Desktop and the WSL2 backend does
+# both halves; see docs/online-on-windows.md.
+
+[mirror]
+output = "../../win-mirror"
+state_dir = "../../win-mirror-state"
+
+[packages]
+top = 3
+extras = false
+# No sdists: without Linux containers there is nothing here that may safely execute
+# code downloaded from the internet.
+sdists = "none"
+
+[targets]
+python = ["3.12", "3.13"]
+platforms = ["win-amd64"]
+
+[sync]
+with_tools = false
+keep_runs = 1
+# Building an sdist runs untrusted code, and this job has no container to run it in.
+build_check = false
+verify = true
+heal_rounds = 1
+
+[build]
+wheels = false
+
+[security]
+# One scan is exercised in the Linux jobs; no need to download the archive twice.
+advisories = false
+
+[performance]
+jobs = 4
+download_jobs = 8

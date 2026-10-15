@@ -188,6 +188,44 @@ jobs:
           path: ${{ runner.temp }}/ci-mirror.tar.gz
           retention-days: 1
 
+  mirror-windows:
+    # Can a Windows machine be the online side at all? Every other job drives gpygap
+    # from Linux, so nothing else would notice a path separator, a drive letter or a
+    # file:// URL that only works on POSIX. This job runs the tool natively on Windows
+    # and then installs from what it produced.
+    #
+    # It deliberately mirrors a handful of wheel-only packages: a GitHub-hosted Windows
+    # runner has Docker in Windows-container mode and no Docker Desktop, so there is no
+    # Linux container to build an sdist in -- and building one outside a container is
+    # running code from the internet on the host, which this project does not do. A real
+    # Windows online machine with the WSL2 backend does both halves; see
+    # docs/online-on-windows.md.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: irm https://astral.sh/uv/install.ps1 | iex
+        shell: powershell
+      - name: Build a mirror, driven from Windows
+        run: uv run --frozen gpygap sync --config .github/ci/gpygap-windows.toml
+      - name: Install from it, offline
+        shell: bash
+        env:
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
+        run: |
+          if python -c "import urllib.request; urllib.request.urlopen('https://pypi.org/simple/', timeout=20)" 2>/dev/null; then
+            echo "pypi.org was reachable: this job proves nothing" >&2
+            exit 1
+          fi
+          python -I win-mirror/gpygap_offline.py verify win-mirror
+          python -I .github/ci/consume.py win-mirror win-amd64 pip,uv
+
   # Round one: can every system install from what Linux alone could build?
   consume-after-linux:
     needs: mirror

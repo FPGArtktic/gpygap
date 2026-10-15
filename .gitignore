@@ -25,3 +25,7 @@ site/
 .coverage.*
 coverage.xml
 htmlcov/
+
+# Mirror built by the Windows CI job
+/win-mirror/
+/win-mirror-state/

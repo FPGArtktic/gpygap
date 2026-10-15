@@ -193,9 +193,12 @@ Worth knowing before trusting a green tick:
 - **Scale.** CI mirrors a handful of projects. The real thing is the top 1000, roughly
   80 GB, several hours and hundreds of builds. Timeouts, memory and prune ratios behave
   differently there.
-- **The Windows online machine.** `bin/gpygap.ps1` and the path translation in
-  [online-on-windows.md](online-on-windows.md) are checked by hand. Every CI job runs a
-  Linux host.
+- **The Windows online machine, fully.** `mirror-windows` does drive gpygap natively on
+  a Windows runner and installs from the result, so the mirror-assembly half is covered.
+  What is not covered is that host also building Linux wheels: that needs Docker Desktop
+  with the WSL2 backend, and a GitHub-hosted Windows runner has neither. `bin/gpygap.ps1`
+  and the path translation in [online-on-windows.md](online-on-windows.md) are still
+  checked by hand.
 - **macOS.** Not built, not consumed, not targeted.
 - **A real air gap.** `--network none` and a blackholed proxy are good imitations of one,
   but they are imitations.

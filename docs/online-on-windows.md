@@ -93,6 +93,42 @@ Two runs rather than one is not an accident of the tooling: it is the same shape
 monthly cycle, where one run publishes what is missing and the next folds in what was
 built in between.
 
+## Can one Windows machine do the whole job?
+
+Yes, and it is the only single-machine arrangement that can.
+
+| | Linux host | Windows host |
+| --- | --- | --- |
+| manylinux / musllinux wheels | native containers | Linux containers through the WSL2 backend |
+| `win_amd64` wheels | **impossible** | native, under MSVC |
+| `py3-none-any` wheels | yes, and they cover every target | same |
+| macOS wheels | impossible | impossible |
+
+A Linux host cannot produce a Windows wheel at all, so it always ends a run with gaps
+somebody else has to fill. A Windows host with Docker Desktop in Linux-container mode has
+both toolchains: the Linux wheels come out of the same pypa images, and the Windows
+wheels come out of MSVC on the host.
+
+It is still two phases rather than one command, and that is structural rather than a
+missing feature. gpygap itself runs inside a Linux container, so it cannot reach MSVC on
+the host; the host builds the Windows wheels separately and `build.external_dir` joins
+them on the next run. Making it one pass would mean running gpygap natively on Windows
+and giving `WheelBuilder` a backend that shells out to the host compiler — a design
+change, not a setting.
+
+## What CI can and cannot check here
+
+The `mirror-windows` job runs gpygap natively on a Windows runner and installs from what
+it produced, offline. That covers the part most likely to break and least likely to be
+noticed: resolution, selection, download, the `simple/` index, checksums and offline
+verification, all over Windows paths and `file://` URLs.
+
+It stops there. A GitHub-hosted Windows runner has Docker in Windows-container mode and
+no Docker Desktop, so there is no Linux container to build an sdist in — and building one
+outside a container means running code from the internet on the host, which this project
+does not do anywhere. Testing the full Windows-host arrangement needs a self-hosted
+runner with Docker Desktop and the WSL2 backend.
+
 ## What is still not possible
 
 macOS. Neither host builds for it, for the same reason Linux does not build for Windows,
