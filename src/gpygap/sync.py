@@ -28,6 +28,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from gpygap import offline
 from gpygap.checksums import write_checksums
@@ -55,6 +56,7 @@ from gpygap.verify import (
     InstallResult,
     Verifier,
 )
+from gpygap.wheelbuild import BuildGap, BuildSummary, WheelFactory
 
 log = logging.getLogger(__name__)
 
@@ -143,12 +145,25 @@ def run_sync(config: Config, options: SyncOptions) -> int:
         return 0
 
     tools = _fetch_tools(config, fetcher.downloads)
-    manifest, pruned = _commit(config, run_id, fetcher, tools, force_prune=options.force_prune)
+    # Nothing is pruned yet. The wheels the last run built are not in the plan -- only
+    # the builder knows about them, and it has not run -- so pruning here would delete
+    # the very files the build cache is about to reuse.
+    manifest, _ = _commit(config, run_id, fetcher, tools, force_prune=False, prune=False)
     info = _publish(config, run_id, scope, manifest, meta)
-    verification = _verify_and_heal(config, run_id, scope, fetcher=fetcher, meta=meta, tools=tools)
+
+    # Wheels are built against the published index, so this cannot run earlier; what
+    # it produces then has to be committed and published again to reach the index.
+    factory = WheelFactory(config)
+    _build_wheels(config, factory, fetcher)
+    manifest, pruned = _commit(config, run_id, fetcher, tools, factory.files, force_prune=options.force_prune)
+    info = _publish(config, run_id, scope, manifest, meta, built=factory.files, gaps=factory.gaps)
+
+    verification = _verify_and_heal(
+        config, run_id, scope, fetcher=fetcher, meta=meta, tools=tools, factory=factory
+    )
     if verification.heal_rounds:
-        manifest, _ = _commit(config, run_id, fetcher, tools, force_prune=False)
-        info = _publish(config, run_id, scope, manifest, meta)
+        manifest, _ = _commit(config, run_id, fetcher, tools, factory.files, force_prune=False)
+        info = _publish(config, run_id, scope, manifest, meta, built=factory.files, gaps=factory.gaps)
     _save_fixes(config, fetcher, scope, verification)
     _write_verified(config, verification, scope)
     shutil.copy2(offline.__file__, config.output / offline.SCRIPT_NAME)
@@ -240,19 +255,57 @@ def _fetch_tools(config: Config, downloads: DownloadResult) -> list[MirrorFile]:
 
 
 def _commit(
-    config: Config, run_id: str, fetcher: Fetcher, tools: Sequence[MirrorFile], *, force_prune: bool
+    config: Config,
+    run_id: str,
+    fetcher: Fetcher,
+    tools: Sequence[MirrorFile],
+    built: Sequence[MirrorFile] = (),
+    *,
+    force_prune: bool,
+    prune: bool = True,
 ) -> tuple[Manifest, PruneResult]:
-    """Record this run's requirements, prune, and return the manifest of what remains."""
-    required = [*fetcher.plan.files.values(), *tools]
+    """Record this run's requirements, prune, and return the manifest of what remains.
+
+    Locally built wheels are passed in separately because the plan is rebuilt from the
+    resolutions on every round and would drop them. Listing them here is what puts them
+    in the manifest, in the simple index and in the run history -- and therefore what
+    stops the prune from deleting a wheel nothing can re-download.
+    """
+    required = [*fetcher.plan.files.values(), *tools, *built]
     present = {f.path: f for f in required if (config.output / f.path).exists()}
     history = RunHistory(config.state.runs)
     history.record(run_id, present)
-    pruned = _prune(config, history, fetcher.downloads, force=force_prune)
+    pruned = _prune(config, history, fetcher.downloads, force=force_prune) if prune else PruneResult()
     candidates = load_manifest(config.state.manifest) | present
     manifest = {path: f for path, f in candidates.items() if (config.output / path).exists()}
     save_manifest(config.state.manifest, manifest)
     history.trim(config.keep_runs)
     return manifest, pruned
+
+
+def _build_wheels(config: Config, factory: WheelFactory, fetcher: Fetcher) -> BuildSummary:
+    """Build a wheel for every target an sdist has no upstream wheel for."""
+    hashes = {
+        path: file.sha256
+        for path, file in fetcher.plan.files.items()
+        if file.sha256 and path in fetcher.plan.build_sdists
+    }
+    # Wheels built on another machine first: a Windows host or CI runner can cover
+    # what no container here can, and an adopted wheel means one less build to run.
+    factory.ingest(fetcher.plan.build_sdists)
+    summary = factory.run(fetcher.plan.build_sdists, hashes)
+    if summary.built or summary.gaps:
+        log.info(
+            "Built %d wheels (%d reused, %d builds run), %d targets left without one",
+            len(summary.built),
+            summary.cached,
+            summary.attempted,
+            len(summary.gaps),
+        )
+    for gap in summary.unbuildable:
+        # Not a failure: no container on a Linux host builds a Windows or macOS wheel.
+        log.debug("no builder for %s (%s)", gap.target, gap.sdist)
+    return summary
 
 
 def _prune(config: Config, history: RunHistory, downloads: DownloadResult, *, force: bool) -> PruneResult:
@@ -269,7 +322,14 @@ def _prune(config: Config, history: RunHistory, downloads: DownloadResult, *, fo
 
 
 def _publish(
-    config: Config, run_id: str, scope: _Scope, manifest: Manifest, meta: DistMetaCache
+    config: Config,
+    run_id: str,
+    scope: _Scope,
+    manifest: Manifest,
+    meta: DistMetaCache,
+    *,
+    built: Sequence[MirrorFile] = (),
+    gaps: Sequence[BuildGap] = (),
 ) -> MirrorInfo:
     projects = write_simple_index(config.output, manifest, meta)
     meta.save(manifest)
@@ -284,11 +344,37 @@ def _publish(
         projects=projects,
         files=len(manifest),
         bytes=sum((config.output / path).stat().st_size for path in manifest),
+        # Published so the offline side can tell at a glance which wheels did not come
+        # from PyPI: they were compiled here, from the sdist next to them.
+        built_wheels=tuple(sorted(f.path for f in built if f.path in manifest)),
     )
     write_json(config.output / "MIRROR-INFO.json", info.to_json())
+    write_json(config.output / offline.GAPS_FILE, _gaps_document(gaps))
     write_landing_page(config.output, info, _uv_archives(manifest))
     write_if_changed(config.output / offline.VERSION_FILE, run_id + "\n")
     return info
+
+
+def _gaps_document(gaps: Sequence[BuildGap]) -> dict[str, Any]:
+    """What still has no wheel, in a form another machine can act on.
+
+    A Windows builder reads this, runs ``pip wheel`` for each entry and drops the
+    result where ``build.external_dir`` points; the next run folds it in.
+    """
+    return {
+        "version": 1,
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "gaps": [
+            {
+                "project": gap.sdist.split("/")[1],
+                "sdist": gap.sdist,
+                "platform": gap.target.platform,
+                "python": gap.target.python,
+                "reason": gap.reason,
+            }
+            for gap in gaps
+        ],
+    }
 
 
 def _uv_archives(manifest: Mapping[str, MirrorFile]) -> list[str]:
@@ -306,6 +392,7 @@ def _verify_and_heal(
     fetcher: Fetcher,
     meta: DistMetaCache,
     tools: Sequence[MirrorFile],
+    factory: WheelFactory,
 ) -> _Verification:
     """Check the published mirror; fetch what is missing and check again."""
     result = _Verification()
@@ -326,8 +413,11 @@ def _verify_and_heal(
         )
         fetcher.fetch(heal, "Resolving what the checks found missing")
         result.heal_rounds += 1
-        manifest, _ = _commit(config, run_id, fetcher, tools, force_prune=False)
-        _publish(config, run_id, scope, manifest, meta)
+        # Healing can pull in sdists nobody has a wheel for; build those too, or the
+        # next round would report them missing with nothing having tried to fix it.
+        _build_wheels(config, factory, fetcher)
+        manifest, _ = _commit(config, run_id, fetcher, tools, factory.files, force_prune=False)
+        _publish(config, run_id, scope, manifest, meta, built=factory.files, gaps=factory.gaps)
         checks = [c for c, r in result.installs.items() if r.outcome is InstallOutcome.MISSING]
         sdists = [s for s, r in result.builds.items() if r.outcome is BuildOutcome.MISSING_DEPS]
         sdists += _sdists_to_build(config, fetcher, done=set(result.builds))
