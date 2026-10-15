@@ -19,10 +19,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from gpygap.models import SEVERITIES
 from gpygap.platforms import PLATFORMS, Platform, get_platforms
 from gpygap.util import normalize_name
 
 DEFAULT_CONFIG_FILE = "gpygap.toml"
+DEFAULT_OSV_SOURCES = ("https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip",)
 DEFAULT_INDEX_URL = "https://pypi.org/simple"
 DEFAULT_TOP_SOURCES = (
     "https://hugovk.github.io/top-pypi-packages/top-pypi-packages.min.json",
@@ -90,6 +92,11 @@ _SCHEMA: dict[str, dict[str, Any]] = {
         "jobs": 2,
         "timeout": 1800,
     },
+    "security": {
+        "advisories": True,
+        "osv_sources": list(DEFAULT_OSV_SOURCES),
+        "fail_on": "none",
+    },
     "performance": {
         "jobs": 8,
         "download_jobs": 16,
@@ -152,6 +159,10 @@ class StatePaths:
         return self.root / "export-snapshot.json"
 
     @property
+    def osv_archive(self) -> Path:
+        return self.root / "osv-pypi.zip"
+
+    @property
     def built_wheels(self) -> Path:
         return self.root / "built-wheels.json"
 
@@ -196,6 +207,9 @@ class Config:
     build_exclude: frozenset[str]
     build_jobs: int
     wheel_build_timeout: int
+    advisories: bool
+    osv_sources: tuple[str, ...]
+    advisories_fail_on: str
     jobs: int
     download_jobs: int
     retries: int
@@ -262,12 +276,13 @@ def _check_type(name: str, value: Any, default: Any) -> None:
 
 
 def _build(v: dict[str, dict[str, Any]], base_dir: Path) -> Config:
-    mirror, packages, targets, sync, build, perf = (
+    mirror, packages, targets, sync, build, security, perf = (
         v["mirror"],
         v["packages"],
         v["targets"],
         v["sync"],
         v["build"],
+        v["security"],
         v["performance"],
     )
     output = (base_dir / mirror["output"]).resolve()
@@ -310,6 +325,9 @@ def _build(v: dict[str, dict[str, Any]], base_dir: Path) -> Config:
         build_exclude=frozenset(normalize_name(p) for p in build["exclude"]),
         build_jobs=build["jobs"],
         wheel_build_timeout=build["timeout"],
+        advisories=security["advisories"],
+        osv_sources=tuple(security["osv_sources"]),
+        advisories_fail_on=security["fail_on"],
         jobs=perf["jobs"],
         download_jobs=perf["download_jobs"],
         retries=perf["retries"],
@@ -370,6 +388,10 @@ def _validate(config: Config) -> None:
         (
             bool(config.build_container_root) == bool(config.build_host_root),
             "build.container_root and build.host_root must be set together",
+        ),
+        (
+            config.advisories_fail_on in ("none", *SEVERITIES),
+            f"security.fail_on must be one of: none, {', '.join(SEVERITIES)}",
         ),
     ]
     for ok, message in checks:

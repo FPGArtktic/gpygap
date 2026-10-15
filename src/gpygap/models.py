@@ -9,6 +9,9 @@ from typing import Any, Literal
 
 DistKind = Literal["sdist", "wheel"]
 
+SEVERITIES = ("unknown", "low", "moderate", "high", "critical")
+"""Advisory severities, weakest first, so "fail on high" also fails on critical."""
+
 FREE_THREADED_SUFFIX = "t"
 """Marks a free-threaded CPython in a target version: ``3.13t``. It is an ABI, not a
 version, so it is stripped before any version string reaches uv."""
