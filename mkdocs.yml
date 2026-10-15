@@ -13,6 +13,9 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
   icon:
     logo: material/package-variant-closed
     repo: fontawesome/brands/github
@@ -37,13 +40,13 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle: { icon: material/weather-night, name: Switch to dark mode }
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: black
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle: { icon: material/weather-sunny, name: Switch to light mode }
 
 extra:

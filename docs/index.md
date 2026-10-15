@@ -1,9 +1,19 @@
-# gpygap documentation
+<div class="hero" markdown>
 
-An offline PyPI mirror for air-gapped networks: the top 1000 PyPI projects plus your own
-packages, with every dependency, extra and build requirement, for Windows and Linux and
-several Python versions. The online side builds the wheels upstream never published, so
-installing on the other side of the air gap needs no compiler.
+# gpygap
+
+<p class="tagline" markdown>
+An offline PyPI mirror for air-gapped networks. The top 1000 projects plus your own,
+with every dependency, extra and build requirement, for Linux and Windows across five
+Python versions — and the wheels upstream never published, built here so that installing
+on the other side of the gap needs no compiler.
+</p>
+
+[Read the pipeline](pipeline.md){ .md-button .md-button--primary }
+[Run it](operations.md){ .md-button }
+[What CI proves](ci.md){ .md-button }
+
+</div>
 
 <div class="grid cards" markdown>
 

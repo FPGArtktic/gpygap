@@ -1,33 +1,160 @@
-/* Small corrections to the Material defaults, nothing structural. */
+/* ---------------------------------------------------------------- palette
+   A deep teal rather than one of the stock Material hues, so the site reads as
+   this project's rather than as the theme's. Both schemes are defined here
+   because Material only knows them as "custom". */
 
-/* Tables here are reference material and get read column by column, so they
-   should not be squeezed into half the page. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color:        #0d9488;   /* vivid teal */
+  --md-primary-fg-color--light: #14b8a6;
+  --md-primary-fg-color--dark:  #0f766e;
+  --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color:              #f97316;   /* orange, for hover and focus */
+  --md-accent-fg-color--transparent: #f973161f;
+  --md-accent-bg-color:              #ffffff;
+  --md-accent-bg-color--light:       #ffffffb3;
+}
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #0d9488;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color:        #0f766e;
+  --md-primary-fg-color--light: #2dd4bf;
+  --md-primary-fg-color--dark:  #0b4f4a;
+}
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color:              #fb923c;
+  --md-accent-fg-color--transparent: #fb923c26;
+}
+[data-md-color-scheme="slate"] {
+  --md-hue: 200;
+  --md-default-bg-color: #0f1720;
+  --md-typeset-a-color: #2dd4bf;
+}
+
+/* ------------------------------------------------------------- typography */
+
+.md-typeset {
+  font-feature-settings: "kern", "liga", "calt";
+}
+.md-typeset h1 {
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.md-typeset h2 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.2em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset h3 {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------- hero */
+
+.hero {
+  margin: -1rem -1.2rem 2.5rem;
+  padding: 2.8rem 1.2rem 2.2rem;
+  border-radius: 0.5rem;
+  background:
+    radial-gradient(1100px 320px at 12% -10%, rgba(13, 148, 136, 0.22), transparent 60%),
+    radial-gradient(900px 300px at 88% 0%, rgba(249, 115, 22, 0.16), transparent 62%);
+}
+[data-md-color-scheme="slate"] .hero {
+  background:
+    radial-gradient(1100px 320px at 12% -10%, rgba(45, 212, 191, 0.20), transparent 60%),
+    radial-gradient(900px 300px at 88% 0%, rgba(251, 146, 60, 0.14), transparent 62%);
+}
+.hero h1 {
+  margin: 0 0 0.4rem;
+  font-size: 2.6rem;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  background: linear-gradient(95deg, var(--md-primary-fg-color), var(--md-accent-fg-color));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p.tagline {
+  margin: 0 0 1.4rem;
+  max-width: 46rem;
+  font-size: 0.95rem;
+  color: var(--md-default-fg-color--light);
+}
+.hero .md-button {
+  margin: 0 0.4rem 0.4rem 0;
+}
+.hero code {
+  font-size: 0.78em;
+}
+
+/* ------------------------------------------------------------------ cards */
+
+.md-typeset .grid.cards > ul > li {
+  padding: 1.1rem 1.25rem;
+  border-radius: 0.4rem;
+  border-color: var(--md-default-fg-color--lightest);
+  transition: border-color 160ms, box-shadow 160ms, transform 160ms;
+}
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 4px 18px rgba(13, 148, 136, 0.18);
+  transform: translateY(-3px);
+}
+.md-typeset .grid.cards > ul > li .twemoji,
+.md-typeset .grid.cards > ul > li svg {
+  color: var(--md-primary-fg-color);
+}
+.md-typeset .grid.cards > ul > li > hr {
+  margin: 0.7rem 0;
+}
+
+/* ----------------------------------------------------------------- tables */
+
+/* Reference tables are read column by column and should not be squeezed into
+   half the page. */
 .md-typeset table:not([class]) {
   display: table;
   width: 100%;
   font-size: 0.72rem;
+  border-radius: 0.3rem;
+  overflow: hidden;
 }
 .md-typeset table:not([class]) th {
   white-space: nowrap;
+  background: var(--md-default-fg-color--lightest);
+  font-weight: 600;
 }
-
-/* Mermaid diagrams are the main illustration in these pages; give them room
-   and keep them centred rather than left-aligned against the text. */
-.md-typeset .mermaid {
-  margin: 1.4em auto;
-  text-align: center;
-}
-
-/* Landing-page cards: a touch more breathing room than the default. */
-.md-typeset .grid.cards > ul > li {
-  padding: 1rem 1.2rem;
-  border-radius: 0.3rem;
-}
-.md-typeset .grid.cards > ul > li > hr {
-  margin: 0.6rem 0;
-}
-
-/* The glossary is long; alternating rows make it scannable. */
 .md-typeset table:not([class]) tbody tr:nth-child(odd) {
   background-color: var(--md-default-fg-color--lightest);
+}
+.md-typeset table:not([class]) tbody tr:hover {
+  background-color: var(--md-accent-fg-color--transparent);
+}
+
+/* --------------------------------------------------------------- diagrams */
+
+/* Mermaid carries most of the explanation on these pages; give it room and
+   centre it rather than leaving it ragged against the text. */
+.md-typeset .mermaid {
+  margin: 1.6em auto;
+  padding: 0.8rem;
+  text-align: center;
+  background: var(--md-code-bg-color);
+  border-radius: 0.4rem;
+}
+
+/* ------------------------------------------------------------------- code */
+
+.md-typeset pre > code {
+  border-radius: 0.3rem;
+}
+.md-typeset :not(pre) > code {
+  border-radius: 0.2rem;
+  padding: 0.1em 0.35em;
 }
