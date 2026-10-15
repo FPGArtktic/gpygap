@@ -46,6 +46,23 @@ PyPI.
 - **Runs in a podman container.** Nothing is installed or built on the host.
 - **Plain files.** Any web server (nginx, IIS, ...) can serve the mirror.
 
+## Prior art
+
+[Morgan](https://github.com/python-morgan/morgan) solves most of this, and I ran it before
+writing a line of my own. Its config-driven environment targeting is a good design, and its
+single-file, standard-library-only server is nicer than what I ended up with — gpygap wants
+a web server where Morgan wants only a Python interpreter. What it did not solve for me is
+the case that kept breaking: when upstream published no wheel for the target, I still got
+an sdist, and the machine behind the air gap has no compiler and never will. That is what
+this is for.
+
+[bandersnatch](https://github.com/pypa/bandersnatch) and
+[devpi](https://github.com/devpi/devpi) are both very good at what they set out to do, and
+neither sets out to do this. bandersnatch gives you a faithful copy of PyPI; devpi caches
+on demand, which needs the network on first fetch, and a data diode does not provide one.
+Like Morgan, both mirror what upstream published — so a target upstream never built for
+stays unbuilt.
+
 ## Quickstart
 
 First decide **where the online machine runs**, because that is the only choice that
