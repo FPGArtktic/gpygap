@@ -1,0 +1,16 @@
+# Packages to mirror in addition to the top list (gpygap.toml: packages.extra_file).
+#
+# One requirement per line, exactly as you would pass it to `uv pip install`.
+# Every line is mirrored with all its dependencies and all its extras, for every
+# Python version and platform in gpygap.toml, and verified offline like the top
+# projects. Changes take effect at the next `bin/gpygap sync`.
+#
+# Examples:
+#   mycompany-sdk                  any version: the newest one at each sync
+#   django>=4.2,<5                 a range: the newest matching version
+#   numpy==1.26.4                  an exact (old) version a project still needs
+#   uvicorn[standard]              one extra only (all extras are mirrored anyway)
+#   pywin32; sys_platform == "win32"
+#
+# Whole lock files (uv.lock, pylock.toml, requirements.txt) go into intake/ instead.
+
