@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 Mateusz Okulanis
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Cutting a release runs the whole of CI first — including installing from a real mirror
+# inside Debian, RHEL, Arch, Alpine and Windows — and only then publishes. A tag whose
+# version disagrees with pyproject.toml stops the run before anything is built.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match project.version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME says $tag, pyproject.toml says $version" >&2
+            exit 1
+          fi
+          echo "releasing $version"
+
+  verify:
+    needs: guard
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release
+      packages: write   # push the image to ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Build the distributions
+        run: uv build --out-dir dist
+
+      - name: Add the standalone offline script
+        # The one file that crosses the air gap by itself; publishing it separately
+        # means an operator can fetch it without unpacking an sdist.
+        run: cp src/gpygap/offline.py dist/gpygap_offline.py
+
+      - name: Checksums
+        run: cd dist && sha256sum ./* > SHA256SUMS && cat SHA256SUMS
+
+      - name: Push the container image
+        run: |
+          image=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build --file Containerfile --tag "$image:${GITHUB_REF_NAME#v}" --tag "$image:latest" .
+          docker push "$image:${GITHUB_REF_NAME#v}"
+          docker push "$image:latest"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          image=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          cat > notes.md <<EOF
+          Verified on Debian 12, RHEL 9 (UBI), Arch and Alpine containers with the network
+          switched off, and on Windows, by installing from a mirror this release built.
+
+          \`\`\`
+          podman pull $image:${GITHUB_REF_NAME#v}
+          \`\`\`
+          EOF
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "gpygap $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --generate-notes
