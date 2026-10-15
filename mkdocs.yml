@@ -1,0 +1,50 @@
+# Documentation site, built by Read the Docs (see .readthedocs.yaml) and in CI with
+# `mkdocs build --strict`. docs/ is the whole site; the repository README stays the
+# landing page on the forge and is deliberately not duplicated here.
+site_name: gpygap
+site_description: Offline PyPI mirror of the most popular projects, for air-gapped networks
+copyright: Copyright &copy; 2026 Mateusz Okulanis &middot; GPL-3.0-or-later
+
+docs_dir: docs
+repo_url: https://github.com/FPGArtktic/gpygap
+repo_name: FPGArtktic/gpygap
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+
+# Explicit, in the reading order index.md recommends. A page missing from here is a
+# warning, and --strict turns warnings into failures: adding a doc means adding it below.
+nav:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Verification: verification.md
+  - Files and formats: file-formats.md
+  - Operations: operations.md
+  - Development: development.md
+  - Design decisions: decisions.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+
+plugins:
+  - search
