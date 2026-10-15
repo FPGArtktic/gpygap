@@ -1,0 +1,178 @@
+# SPDX-FileCopyrightText: 2026 Mateusz Okulanis
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The interesting jobs are the last two: they build a real (tiny) mirror and then install
+# from it inside Debian, RHEL, Arch and Alpine containers with the network switched off,
+# and on a Windows runner. That is the guarantee gpygap exists to give, tested rather
+# than asserted.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+  # Release gates on this exact workflow rather than a copy of it.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GPYGAP_ENGINE: docker
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - run: uv sync --frozen --all-groups
+      - run: uv run --frozen ruff format --check src tests
+      - run: uv run --frozen ruff check src tests
+      - run: uv run --frozen mypy
+
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - run: uv run --python ${{ matrix.python }} pytest -q
+
+  offline-py39:
+    # offline.py ships to the air-gapped side on its own and must run on the oldest
+    # Python a server there might have.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bin/check-offline-py39
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - run: uv run --frozen --group docs mkdocs build --strict
+
+  mirror:
+    # Builds the tiny CI mirror the consume-* jobs install from.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the mirror
+        run: bin/gpygap sync --config .github/ci/gpygap.toml
+      - name: Pack it
+        # One tarball instead of tens of thousands of small files: the artifact
+        # upload is minutes faster and the layout survives on Windows.
+        run: tar -czf "$RUNNER_TEMP/ci-mirror.tar.gz" -C ci-mirror .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-mirror
+          path: ${{ runner.temp }}/ci-mirror.tar.gz
+          retention-days: 1
+
+  consume-linux:
+    needs: mirror
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian
+            image: debian:12
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv
+            python: python3
+          - name: rhel
+            image: registry.access.redhat.com/ubi9/ubi
+            setup: dnf -y install python3.12 && dnf clean all
+            python: python3.12
+          - name: arch
+            image: archlinux:latest
+            setup: pacman -Sy --noconfirm python
+            python: python3
+          - name: alpine
+            image: alpine:3.20
+            setup: apk add --no-cache python3
+            python: python3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-mirror
+          path: ${{ runner.temp }}
+      - name: Unpack the mirror
+        run: mkdir -p "$RUNNER_TEMP/mirror" && tar -xzf "$RUNNER_TEMP/ci-mirror.tar.gz" -C "$RUNNER_TEMP/mirror"
+      - name: Build the ${{ matrix.name }} image
+        # Empty build context: only the three lines below are sent to the daemon.
+        # A virtualenv sidesteps PEP 668, which Debian and Arch enforce.
+        run: |
+          printf '%s\n' \
+            'FROM ${{ matrix.image }}' \
+            'RUN ${{ matrix.setup }}' \
+            'RUN ${{ matrix.python }} -m venv /venv' \
+            | docker build -t gpygap-consume:${{ matrix.name }} -
+      - name: Verify every checksum, offline
+        run: |
+          docker run --rm --network none \
+            -v "$RUNNER_TEMP/mirror:/mirror:ro" \
+            gpygap-consume:${{ matrix.name }} \
+            /venv/bin/python -I /mirror/gpygap_offline.py verify /mirror
+      - name: Install from wheels alone, offline
+        # pip is upgraded from the mirror first, offline: Debian 12 ships pip 23.0.1,
+        # which rejects a wheel whose metadata Name normalizes differently from the
+        # requested name (typing_extensions vs typing-extensions) when it reads the
+        # PEP 658 sidecar. Fixed in pip 23.1. Doing it here also proves the mirror can
+        # bootstrap its own tooling with the network off.
+        run: |
+          docker run --rm --network none \
+            -v "$RUNNER_TEMP/mirror:/mirror:ro" \
+            -v "$PWD/.github/ci/consume.py:/consume.py:ro" \
+            gpygap-consume:${{ matrix.name }} \
+            sh -c '/venv/bin/python -m pip install --quiet --no-cache-dir \
+                     --disable-pip-version-check --index-url file:///mirror/simple \
+                     --upgrade pip &&
+                   /venv/bin/python -m pip --version &&
+                   /venv/bin/python -I /consume.py /mirror linux-x86_64'
+
+  consume-windows:
+    needs: mirror
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    env:
+      # No --network none on a native runner, so send any accidental outbound request
+      # to a closed port instead of letting it silently succeed against PyPI.
+      HTTP_PROXY: http://127.0.0.1:9
+      HTTPS_PROXY: http://127.0.0.1:9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-mirror
+          path: ${{ runner.temp }}
+      - name: Unpack the mirror
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/mirror" && tar -xzf "$RUNNER_TEMP/ci-mirror.tar.gz" -C "$RUNNER_TEMP/mirror"
+      - name: Verify every checksum
+        shell: bash
+        run: python -I "$RUNNER_TEMP/mirror/gpygap_offline.py" verify "$RUNNER_TEMP/mirror"
+      - name: Install from wheels alone
+        shell: bash
+        run: python -I .github/ci/consume.py "$RUNNER_TEMP/mirror" win-amd64

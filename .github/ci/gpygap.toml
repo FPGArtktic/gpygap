@@ -1,0 +1,36 @@
+# Configuration for the CI end-to-end run. Deliberately tiny: the point is to exercise
+# every stage (resolve, download, index, verify) and then prove, from real distro
+# containers, that installing from the result needs no compiler and no network.
+#
+# Paths are relative to this file, so they land in the repository root.
+
+[mirror]
+output = "../../ci-mirror"
+state_dir = "../../ci-mirror-state"
+
+[packages]
+top = 5
+# pip itself must be mirrored: distro pip is often too old to read the PEP 658 sidecars
+# this index serves (Debian 12 ships 23.0.1, which needs 23.1). In production the top
+# list already includes pip; with top = 5 it has to be named.
+extra = ["pip"]
+# Extras multiply the resolution count and pull in the ML stack; not what CI tests.
+extras = false
+# Only keep an sdist when some target has no wheel for it.
+sdists = "needed"
+
+[targets]
+# The Python versions the distro images in consume-linux ship, plus one ahead:
+# Debian 12 -> 3.11, UBI 9 -> 3.12, Alpine 3.20 -> 3.12, Arch -> 3.13 (rolling).
+python = ["3.11", "3.12", "3.13", "3.14"]
+platforms = ["linux-x86_64", "win-amd64"]
+
+[sync]
+# uv archives and python-build-standalone builds are hundreds of MB and the runners
+# already have both.
+with_tools = false
+keep_runs = 1
+
+[performance]
+jobs = 4
+download_jobs = 8
