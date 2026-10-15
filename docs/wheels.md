@@ -113,6 +113,60 @@ Windows machine built from a pure-Python sdist is `py3-none-any`, and the mirror
 it to the Linux targets too. For compiled extensions it does not, for the same reason in
 reverse.
 
+## When a build fails
+
+Three things end up in `MIRROR-GAPS.json`, and only one of them is genuinely nobody's
+fault.
+
+| `reason` | What happened | Is it fine? |
+| --- | --- | --- |
+| `no-builder` | Nothing here can compile for that platform — `win-amd64` or macOS from a Linux host. | Yes, and it is the documented gap. A Windows builder or `build.external_dir` closes it. |
+| `build-failed` | The build ran and did not produce a wheel. | **Usually not.** See below. |
+| `no-engine` | No container engine was reachable, so nothing was built at all. | No. The mirror is missing every wheel it was asked to compile. |
+
+`build-failed` covers two cases that deserve to be told apart, and the error in
+`<run>.log` says which:
+
+**The project does not support that interpreter.** A C extension that has not been
+updated for 3.14, a `python_requires` that excludes the version. Nothing the mirror can
+do, and nothing a developer could have done either.
+
+**The builder image is missing a system library.** `fatal error: libpq-fe.h: No such
+file or directory` means `psycopg2` wanted `libpq-devel` and the manylinux image does not
+carry it. This one is **not** acceptable to wave through: the developer on the other side
+of the air gap hits the same wall, and worse, because they cannot install the headers
+either. It is also the one you can fix.
+
+### Giving the builder what it needs
+
+`build.images` points a platform at your own image. Derive it from the pypa one so the
+libc floor and `auditwheel` come along:
+
+```dockerfile
+# manylinux-with-libs
+FROM quay.io/pypa/manylinux_2_28_x86_64:2026.10.10-1
+RUN dnf -y install libpq-devel openldap-devel libffi-devel && dnf clean all
+```
+
+```toml
+[build]
+images = [
+    "linux-x86_64=registry.example.local/manylinux-with-libs:2026.10.10",
+    "linux-musl-x86_64=registry.example.local/musllinux-with-libs:2026.10.10",
+]
+```
+
+The resulting wheel still installs on a machine without those libraries, because
+`auditwheel repair` copies the shared objects it links against into the wheel and
+rewrites the RPATH. That is the whole point of the manylinux process, and it is why this
+works rather than merely moving the problem.
+
+Two things to keep in mind. The image name is part of the build cache key, so changing
+it rebuilds everything that image can build — deliberate, because a wheel built against
+different libraries is a different wheel. And vendoring a library into a wheel
+redistributes it: check that its licence allows that before adding it, particularly for
+anything copyleft.
+
 ## Rebuilding only what changed
 
 ```mermaid

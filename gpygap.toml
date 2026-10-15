@@ -100,7 +100,12 @@ engine = "auto"
 # host_root = "C:\\gpygap"
 # Override the builder image of a platform: "platform-key=image". Defaults come from
 # the platform itself and are pinned, so the libc floor cannot drift between runs.
-# images = ["linux-x86_64=quay.io/pypa/manylinux_2_28_x86_64:2026.10.10-1"]
+#
+# The reason to set this is a build that fails on a missing system library -- psycopg2
+# wanting libpq-devel, say. Derive an image from the pypa one, add the -devel packages,
+# and point the platform at it; auditwheel still vendors what the wheel links against,
+# so the result installs on a machine that has none of them. See docs/wheels.md.
+# images = ["linux-x86_64=registry.example.local/manylinux-with-libs:2026.10.10"]
 images = []
 # Projects never built locally, by name.
 exclude = []

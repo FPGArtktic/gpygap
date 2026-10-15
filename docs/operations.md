@@ -66,6 +66,7 @@ applied with `--force` on top of the existing mirror (or into an empty directory
 | smoke test fails but online check passed | Web server problem. | MIME types for `.whl`/`.metadata`, `+` in URLs (IIS: `allowDoubleEscaping`), directory index. |
 | `build.wheels is on but no container engine was reachable` | The wrapper could not hand the container an engine socket, so **nothing was built**. | Every target that needed a wheel is in `MIRROR-GAPS.json` with `"reason": "no-engine"`. Check that the engine runs (`podman info`), then rerun; the resolutions and downloads are cached, so it resumes quickly. |
 | `MIRROR-INFO.json` has an empty `built_wheels` while the run reports targets without wheels | Same cause as above, seen from the other side. | As above. A run with `build.wheels = false` reports this legitimately. |
+| `"reason": "build-failed"` in `MIRROR-GAPS.json` | A build ran and produced nothing. | Read the error in `<run>.log`. A missing system header means the builder image lacks a `-devel` package, and `build.images` fixes it ([wheels.md](wheels.md)). A project that does not support that Python version cannot be fixed here. |
 | `Built N wheels ... M targets left without one` | Normal when M counts `win-amd64` on a Linux host. | Confirm with `MIRROR-GAPS.json`: `no-builder` on a Windows platform is the documented gap, not a fault. |
 
 ## Changing scope

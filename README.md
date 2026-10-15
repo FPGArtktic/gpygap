@@ -391,9 +391,12 @@ g=json.load(open('gpygap/MIRROR-GAPS.json'))['gaps']
 print(len(g),'gaps:',collections.Counter((x['platform'],x['reason']) for x in g))"
 ```
 
-`no-builder` on `win-amd64` from a Linux host is expected — that is the documented gap,
-and it is what a Windows builder or `build.external_dir` closes. `build-failed` is worth
-reading the log for. `no-engine` is check 3.
+Three reasons appear, and they are not equal. `no-builder` on `win-amd64` from a Linux
+host is expected: that is the documented gap, closed by a Windows builder or
+`build.external_dir`. `no-engine` is check 3 and means nothing was built at all.
+`build-failed` means a build ran and produced nothing — usually a system library the
+builder image does not carry, which `build.images` fixes, and which is *not* something
+to wave through: the developer behind the air gap hits the same wall.
 
 **5. What you are about to ship, security-wise.** `advisories.html` in the mirror is a
 report meant to be read; `MIRROR-ADVISORIES.json` is the same for scripts. Mirroring a
@@ -572,6 +575,14 @@ CI does this on every distro before installing anything, so the path is tested.
   a directory a Windows machine drops `pip wheel` output into, or install the MSVC Build
   Tools on the developer machines (`vs_BuildTools.exe --layout` makes an offline
   installer that crosses the air gap).
+- **A build can fail on a missing system library.** The builder images carry a
+  compiler, not every `-devel` package: `psycopg2` wants `libpq-devel`, `mysqlclient`
+  wants MySQL headers. Those land in `MIRROR-GAPS.json` as `build-failed`, and they are
+  worth reading rather than waving through — the developer behind the air gap hits the
+  same wall and cannot install the headers either. Fixable: derive an image from the
+  pypa one with the packages added and point `build.images` at it; `auditwheel` vendors
+  the libraries into the wheel, so it still installs on a machine without them. See
+  [docs/wheels.md](docs/wheels.md).
 - `torch` from PyPI pulls CUDA libraries on Linux (`nvidia-*`, several GB per version).
   `--plan-only` shows the size per project; exclude what you do not need. Indexes other
   than PyPI (such as download.pytorch.org) are not mirrored.
