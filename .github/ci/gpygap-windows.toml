@@ -5,10 +5,13 @@
 # offline verification, all over Windows paths and file:// URLs. That is where the
 # portability risk actually lives, and nothing else tests it.
 #
-# What it cannot prove: building the Linux wheels. That needs Linux containers, and a
-# GitHub-hosted Windows runner has Docker in Windows-container mode and no Docker
-# Desktop. A real Windows online machine with Docker Desktop and the WSL2 backend does
-# both halves; see docs/online-on-windows.md.
+# It also builds the win_amd64 wheels itself, in process, because on Windows there is
+# no container that would help: a Windows wheel needs MSVC and MSVC needs Windows.
+#
+# What it cannot prove: building the Linux wheels on this host. That needs Linux
+# containers, and a GitHub-hosted Windows runner has Docker in Windows-container mode
+# and no Docker Desktop. A real Windows online machine with the WSL2 backend does both
+# halves in one run; see docs/online-on-windows.md.
 
 [mirror]
 output = "../../win-mirror"
@@ -17,9 +20,10 @@ state_dir = "../../win-mirror-state"
 [packages]
 top = 3
 extras = false
-# No sdists: without Linux containers there is nothing here that may safely execute
-# code downloaded from the internet.
-sdists = "none"
+# A C extension with no wheels on PyPI: the Windows host has to compile it, which is
+# the half of the arrangement nothing else tests.
+extra = ["llist"]
+sdists = "needed"
 
 [targets]
 python = ["3.12", "3.13"]
@@ -28,13 +32,18 @@ platforms = ["win-amd64"]
 [sync]
 with_tools = false
 keep_runs = 1
-# Building an sdist runs untrusted code, and this job has no container to run it in.
+# The build check wants a container it does not have here; the wheel build below is
+# the stronger statement anyway, since it keeps what it produced.
 build_check = false
 verify = true
 heal_rounds = 1
 
 [build]
-wheels = false
+# On Windows this means the host toolchain, not a container. It is the one place the
+# project builds an sdist outside one, because there is no alternative -- and it is
+# the exposure a developer takes anyway when pip builds from source, which is exactly
+# what mirroring the wheel saves them from.
+wheels = true
 
 [security]
 # One scan is exercised in the Linux jobs; no need to download the archive twice.

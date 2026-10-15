@@ -18,6 +18,7 @@ from gpygap.wheelbuild import (
     _cache_key,
     python_executable,
     targets_satisfied,
+    windows_path_in_wsl,
 )
 
 LINUX = BuildTarget("linux-x86_64", "3.12")
@@ -319,3 +320,62 @@ def test_a_cached_failure_is_a_result_not_a_reason_to_retry(
         "packages/a/a-1.tar.gz", "a", LINUX, image=image, digest="cd" * 32, candidates={LINUX}
     )
     assert wheel is None and cached and error == "no compiler"
+
+
+# ------------------------------------------------- where the builder can reach
+
+
+def test_a_windows_host_builds_its_own_wheels_and_nothing_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No container helps here: a Windows wheel needs MSVC, and MSVC needs Windows.
+    # When gpygap itself runs there it builds those in process and leaves Linux to
+    # the sibling containers.
+    config = config_at(tmp_path)
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "win32")
+    monkeypatch.setattr("gpygap.wheelbuild._HOST_ARCH", "x86_64")
+
+    assert factory.builds_natively(PLATFORMS["win-amd64"])
+    assert not factory.builds_natively(PLATFORMS["win-arm64"])  # wrong architecture
+    assert not factory.builds_natively(PLATFORMS["linux-x86_64"])  # containers do that
+    assert not factory.builds_natively(PLATFORMS["macos-arm64"])
+
+
+def test_a_linux_host_builds_no_windows_wheels(tmp_path: Path) -> None:
+    factory = WheelFactory(config_at(tmp_path))  # type: ignore[arg-type]
+    assert not factory.builds_natively(PLATFORMS["win-amd64"])
+    assert factory.image_for(PLATFORMS["linux-x86_64"]) is not None
+
+
+def test_the_engine_may_be_a_command_not_just_a_binary(tmp_path: Path) -> None:
+    # "podman inside WSL, driven from Windows" is one engine as far as the operator
+    # is concerned, and three words as far as argv is concerned.
+    config = config_at(tmp_path, '[build]\nengine = "wsl -d gpygap podman"\n')
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+    assert factory._engine_command() == ["wsl", "-d", "gpygap", "podman"]
+    assert factory._engine_runs_in_wsl
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ("C:/gpygap/mirror", "/mnt/c/gpygap/mirror"),
+        ("D:/a/_temp/out", "/mnt/d/a/_temp/out"),
+        ("/srv/gpygap", "/srv/gpygap"),
+        ("relative/path", "relative/path"),
+    ],
+)
+def test_windows_paths_are_translated_the_way_wsl_sees_them(given: str, expected: str) -> None:
+    assert windows_path_in_wsl(Path(given)) == expected
+
+
+def test_paths_are_left_alone_when_the_engine_shares_this_filesystem(tmp_path: Path) -> None:
+    factory = WheelFactory(config_at(tmp_path))  # type: ignore[arg-type]
+    assert factory.engine_path(Path("/srv/gpygap")) == "/srv/gpygap"
+
+
+def test_an_explicit_mapping_wins_over_everything(tmp_path: Path) -> None:
+    config = config_at(tmp_path, '[build]\ncontainer_root = "/work"\nhost_root = "C:\\\\gpygap"\n')
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+    assert factory.engine_path(Path("/work/gpygap/packages")) == "C:\\gpygap\\gpygap\\packages"

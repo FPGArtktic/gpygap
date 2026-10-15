@@ -210,8 +210,19 @@ jobs:
       - name: Install uv
         run: irm https://astral.sh/uv/install.ps1 | iex
         shell: powershell
-      - name: Build a mirror, driven from Windows
+      - name: Build a mirror, and its Windows wheels, on Windows
         run: uv run --frozen gpygap sync --config .github/ci/gpygap-windows.toml
+      - name: It built the wheel itself, not adopted one
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import json, pathlib, sys
+          info = json.loads(pathlib.Path("win-mirror/MIRROR-INFO.json").read_text("utf-8"))
+          built = [p for p in info.get("built_wheels", []) if "win_amd64" in p]
+          print("built here:", built or "nothing")
+          if not built:
+              sys.exit("no win_amd64 wheel was built on this host; the native builder did nothing")
+          EOF
       - name: Install from it, offline
         shell: bash
         env:

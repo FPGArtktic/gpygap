@@ -28,8 +28,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import platform as platform_module
+import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from collections.abc import Iterable, Mapping, Sequence
@@ -41,7 +44,7 @@ from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 
 from gpygap.config import Config
 from gpygap.console import progress
-from gpygap.models import BuildTarget, MirrorFile
+from gpygap.models import FREE_THREADED_SUFFIX, BuildTarget, MirrorFile
 from gpygap.platforms import PLATFORMS, Platform
 from gpygap.selection import package_path, parse_python, wheel_compatible
 from gpygap.util import normalize_name, parallel_map, read_json, write_json
@@ -56,6 +59,18 @@ _TIMED_OUT = "timed out"
 # builds of the same sdist byte-identical, so a monthly resync that rebuilds
 # nothing also rewrites nothing and the delta stays small.
 _SOURCE_DATE_EPOCH = "315532800"
+
+# Where the builder sees things. Fixed, rather than mirroring the local path: on a
+# Windows host the local path is C:\..., which is not a path a Linux container can
+# be given, and the engine may not even share this filesystem.
+# Stands in for an image name in the build cache key, so a wheel built by the host
+# toolchain is not confused with one built in a container.
+_NATIVE = "native"
+# uv's name for this machine's architecture, as platforms.py spells it.
+_HOST_ARCH = "aarch64" if platform_module.machine().lower() in ("arm64", "aarch64") else "x86_64"
+
+_MIRROR_MOUNT = "/mirror"
+_OUT_MOUNT = "/out"
 
 # $0 is a label, the rest are the arguments below. pip resolves build requirements
 # from the mirror's own index with the network off; auditwheel then retags the
@@ -175,6 +190,14 @@ def _cache_key(sdist_sha256: str, target: BuildTarget, image: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def windows_path_in_wsl(path: Path) -> str:
+    """``C:\\a\\b`` as WSL sees it: ``/mnt/c/a/b``. Any other path is left alone."""
+    text = str(path).replace("\\", "/")
+    if len(text) > 1 and text[1] == ":" and text[0].isalpha():
+        return f"/mnt/{text[0].lower()}{text[2:]}"
+    return text
+
+
 def _wheel_project(filename: str) -> str:
     """Normalized project name of a wheel file, or an empty string if unreadable."""
     try:
@@ -247,29 +270,87 @@ class WheelFactory:
             return "podman"
         return "docker"
 
-    def host_path(self, path: Path) -> str:
+    def engine_path(self, path: Path) -> str:
         """Translate a path this process sees into one the container engine sees.
 
-        On Linux the wrapper mounts the project directory at the same absolute path
-        inside and out, so this is the identity and nothing needs configuring. It is
-        not the identity when the engine lives on another kind of host: with Docker
-        Desktop on Windows the mirror is ``/work/gpygap`` in here and ``C:\\gpygap``
-        out there, and a sibling container is created by the engine, which only
-        understands the second one.
+        Three cases, and only the first two need configuring:
+
+        * the engine runs on this filesystem (a Linux host, or Docker Desktop, which
+          accepts Windows paths) -- the path is used as it is;
+        * the engine runs inside WSL while gpygap runs on Windows -- ``C:\\x\\y``
+          becomes ``/mnt/c/x/y``, which is how WSL sees the same file;
+        * gpygap runs in a container whose project directory is mounted somewhere
+          else, and ``build.container_root`` / ``build.host_root`` say where.
         """
         container_root = self._config.build_container_root
         host_root = self._config.build_host_root
-        if not container_root or not host_root:
-            return str(path)
         text = str(path)
-        if not text.startswith(container_root):
-            return text
-        relative = text[len(container_root) :].lstrip("/")
-        separator = "\\" if "\\" in host_root else "/"
-        return host_root.rstrip("/\\") + separator + relative.replace("/", separator)
+        if container_root and host_root and text.startswith(container_root):
+            relative = text[len(container_root) :].lstrip("/\\")
+            separator = "\\" if "\\" in host_root else "/"
+            return host_root.rstrip("/\\") + separator + relative.replace("\\", "/").replace("/", separator)
+        if self._engine_runs_in_wsl:
+            return windows_path_in_wsl(path)
+        return text
+
+    @property
+    def _engine_runs_in_wsl(self) -> bool:
+        return self._engine_command()[0].lower() in ("wsl", "wsl.exe")
 
     def image_for(self, platform: Platform) -> str | None:
         return self._config.build_images.get(platform.key) or platform.build_image
+
+    def builds_natively(self, platform: Platform) -> bool:
+        """Whether this machine can build for ``platform`` without a container.
+
+        Only Windows, and only for its own architecture. A Windows wheel needs MSVC
+        and MSVC needs Windows; no container on a Linux host changes that, and a
+        Windows container would not help either because the toolchain is the point,
+        not the userland. So when gpygap itself runs on Windows it builds those
+        wheels in process, and leaves the Linux ones to the sibling containers.
+
+        This is the one place the project knowingly builds an sdist outside a
+        container. There is no alternative on Windows, and it is the same exposure a
+        developer accepts when pip builds from source on their own machine -- which
+        is precisely what this is here to avoid making them do.
+        """
+        if sys.platform != "win32" or not platform.key.startswith("win-"):
+            return False
+        return platform.python_build[1] == _HOST_ARCH
+
+    def _run_native(self, sdist: str, target: BuildTarget) -> tuple[str | None, str]:
+        """Build a wheel with the host's own toolchain, no container involved."""
+        mirror = self._config.output
+        self._config.state.build_tmp.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=self._config.state.build_tmp, ignore_cleanup_errors=True) as out:
+            out_dir = Path(out)
+            command = [
+                self._config.uv_bin,
+                *("build", "--wheel", "--no-config", "--offline"),
+                *("--python", target.python.removesuffix(FREE_THREADED_SUFFIX)),
+                *("--default-index", (mirror / "simple").as_uri()),
+                *("--out-dir", str(out_dir)),
+                str(mirror / sdist),
+            ]
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                    timeout=self._config.wheel_build_timeout,
+                    env=self._config.uv_env(),
+                )
+            except subprocess.TimeoutExpired:
+                return None, _TIMED_OUT
+            if result.returncode != 0:
+                return None, (result.stderr or result.stdout).strip()[-_ERROR_TAIL:]
+            wheels = sorted(out_dir.glob("*.whl"))
+            if not wheels:
+                return None, "the build produced no wheel"
+            return self._publish(wheels[0], sdist)
 
     # ---------------------------------------------------------------- ingest
 
@@ -366,13 +447,14 @@ class WheelFactory:
             if target not in remaining:
                 continue
             platform = PLATFORMS[target.platform]
-            image = self.image_for(platform)
-            if image is None:
+            native = self.builds_natively(platform)
+            image = None if native else self.image_for(platform)
+            if not native and image is None:
                 summary.gaps.append(BuildGap(sdist, target, "no-builder"))
                 remaining.discard(target)
                 continue
             wheel, cached, error = self._wheel_for(
-                sdist, project, target, image=image, digest=digest, candidates=remaining
+                sdist, project, target, image=image or _NATIVE, digest=digest, candidates=remaining
             )
             summary.attempted += 0 if cached else 1
             summary.cached += 1 if cached else 0
@@ -408,7 +490,9 @@ class WheelFactory:
             with self._lock:
                 self._cache.pop(key, None)
 
-        filename, error = self._run_container(sdist, target, image)
+        filename, error = (
+            self._run_native(sdist, target) if image == _NATIVE else self._run_container(sdist, target, image)
+        )
         with self._lock:
             self._cache[key] = (
                 {"wheel": filename} if filename else {"wheel": "", "error": error[-_ERROR_TAIL:]}
@@ -460,7 +544,7 @@ class WheelFactory:
 
     def _engine_command(self) -> list[str]:
         engine = self.engine
-        command = [engine]
+        command = shlex.split(engine)
         # Inside the mirror's own container the engine is reached over the API
         # socket bin/gpygap passes in; podman needs to be told to use it.
         if "podman" in engine and os.environ.get("CONTAINER_HOST"):
@@ -468,7 +552,7 @@ class WheelFactory:
         return command
 
     def _engine_available(self) -> bool:
-        if shutil.which(self.engine) is None:
+        if shutil.which(self._engine_command()[0]) is None:
             log.error(
                 "build.wheels is on but %r is not on PATH: no wheels will be built and every "
                 "target without an upstream wheel stays a gap",
@@ -511,16 +595,18 @@ class WheelFactory:
                 *("run", "--rm", "--network", "none"),
                 # The engine resolves these on its own host, which is not always
                 # this container's filesystem; the paths inside stay as they are.
-                *("--volume", f"{self.host_path(mirror)}:{mirror}:ro"),
-                *("--volume", f"{self.host_path(out_dir)}:{out_dir}"),
+                *("--volume", f"{self.engine_path(mirror)}:{_MIRROR_MOUNT}:ro"),
+                *("--volume", f"{self.engine_path(out_dir)}:{_OUT_MOUNT}"),
                 *("--env", f"SOURCE_DATE_EPOCH={_SOURCE_DATE_EPOCH}"),
-                *("--workdir", str(out_dir)),
+                *("--workdir", _OUT_MOUNT),
                 image,
                 *("bash", "-c", _BUILD_SCRIPT, "gpygap-build"),
                 python_executable(target.python),
-                str(mirror / sdist),
-                (mirror / "simple").as_uri(),
-                str(out_dir),
+                # sdist is a POSIX mirror-relative path, so this is correct whatever
+                # the host's own separator is.
+                f"{_MIRROR_MOUNT}/{sdist}",
+                f"file://{_MIRROR_MOUNT}/simple",
+                _OUT_MOUNT,
                 platform.wheel_tag_platform,
             ]
             try:
