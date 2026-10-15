@@ -59,6 +59,7 @@ log = logging.getLogger(__name__)
 VERSION_FILE = "MIRROR-VERSION"
 SUMS_FILE = "MIRROR-SHA256SUMS"
 VERIFIED_FILE = "MIRROR-VERIFIED.json"
+GAPS_FILE = "MIRROR-GAPS.json"
 DELTA_FILE = "DELTA.json"
 PAYLOAD_DIR = "payload"
 SCRIPT_NAME = "gpygap_offline.py"
@@ -260,7 +261,8 @@ def smoke_test(base_url: str, *, uv: str, include_all: bool, jobs: int) -> list[
 
 def _smoke_check(check: dict[str, Any], index_url: str, uv: str, env: dict[str, str]) -> str | None:
     command = [uv, "pip", "compile", "-", "--no-header", "--quiet", "--no-config"]
-    command += ["--default-index", index_url, "--python-version", check["python"]]
+    # A trailing "t" marks the free-threaded ABI, which is not part of the version.
+    command += ["--default-index", index_url, "--python-version", check["python"].rstrip("t")]
     command += ["--python-platform", check["uv_target"]]
     command += ["--no-build"] if check["outcome"] == "wheels" else []
     command += ["--no-deps"] if check.get("no_deps") else []

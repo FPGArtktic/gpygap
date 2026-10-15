@@ -34,6 +34,7 @@ from enum import StrEnum
 
 from gpygap.config import Config
 from gpygap.console import progress
+from gpygap.models import FREE_THREADED_SUFFIX
 from gpygap.platforms import Platform
 from gpygap.util import parallel_map
 
@@ -150,7 +151,8 @@ class Verifier:
     def _compile(self, check: InstallCheck, *, offline: bool, wheels_only: bool) -> str | None:
         """Return ``None`` if the requirement resolves, else uv's error output."""
         command = [self._config.uv_bin, "pip", "compile", "-", "--no-header", "--quiet", "--no-config"]
-        command += ["--python-version", check.python, "--python-platform", check.platform.uv_target]
+        version = check.python.removesuffix(FREE_THREADED_SUFFIX)
+        command += ["--python-version", version, "--python-platform", check.platform.uv_target]
         command += ["--no-deps"] if check.no_deps else []
         command += ["--no-build"] if wheels_only else []
         if offline:

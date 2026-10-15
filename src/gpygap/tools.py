@@ -85,7 +85,8 @@ def pick_python_builds(
         if not _is_standard_cpython(entry):
             continue
         parts = entry["version_parts"]
-        python = f"{parts['major']}.{parts['minor']}"
+        suffix = "t" if entry.get("variant") == "freethreaded" else ""
+        python = f"{parts['major']}.{parts['minor']}{suffix}"
         for platform in platforms:
             if python not in pythons or (entry["os"], entry["arch"], entry["libc"]) != platform.python_build:
                 continue
@@ -96,9 +97,10 @@ def pick_python_builds(
 
 
 def _is_standard_cpython(entry: dict[str, Any]) -> bool:
+    """CPython, in a variant the mirror can target: the default build or free-threaded."""
     return (
         entry.get("implementation") == "cpython"
-        and entry.get("variant") == "default"
+        and entry.get("variant") in ("default", "freethreaded")
         and bool(entry.get("url"))
         and _FINAL_RELEASE.fullmatch(entry.get("version", "")) is not None
     )

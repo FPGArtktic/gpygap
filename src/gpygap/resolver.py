@@ -37,7 +37,7 @@ from typing import Any
 
 from gpygap.config import Config
 from gpygap.console import progress
-from gpygap.models import DistFile, DistKind, LockedPackage
+from gpygap.models import FREE_THREADED_SUFFIX, DistFile, DistKind, LockedPackage
 from gpygap.platforms import PLATFORMS, Platform
 from gpygap.util import normalize_name, parallel_map, read_json, write_json
 
@@ -254,7 +254,7 @@ class Resolver:
         return [
             *(self._config.uv_bin, "pip", "compile", "-"),
             *target,
-            *("--python-version", request.python),
+            *("--python-version", request.python.removesuffix(FREE_THREADED_SUFFIX)),
             *(["--no-deps"] if request.no_deps else []),
             *("--format", "pylock.toml"),
             *("--no-header", "--quiet", "--no-config"),
