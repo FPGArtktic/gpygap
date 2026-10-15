@@ -53,3 +53,35 @@ applied with `--force` on top of the existing mirror (or into an empty directory
 - New platform or Python: `targets.platforms`, `targets.python` (then expect a large
   first download).
 - Size estimate before any of these: `bin/gpygap sync --plan-only`.
+
+## Windows developer machines
+
+Almost everything a Windows developer installs comes from a wheel: the ones the projects
+published, plus every `py3-none-any` wheel the mirror built from an sdist that had none.
+What is left is a compiled extension with no Windows wheel upstream, which a Linux host
+cannot build. Those are listed by name in the run report and in `MIRROR-GAPS.json`, so
+the list is short and known rather than discovered at `pip install` time.
+
+Two ways to close it, and they combine:
+
+**A Windows builder.** Any Windows machine with the MSVC Build Tools and a copy of the
+mirror can produce the missing wheels; it needs no gpygap of its own.
+
+```powershell
+# on the Windows machine, against a copy of the mirror
+python .github\ci\build-windows-wheels.py D:\mirror D:\wheels
+```
+
+Copy `D:\wheels` to where `build.external_dir` points on the online machine. The next
+`sync` adopts them, indexes them and counts them against the targets they cover. This is
+what CI does between its two mirror passes, so the path is exercised on every push.
+
+**The compiler on the developer machine.** For an air-gapped network, Microsoft's
+installer makes an offline cache that crosses the air gap like the mirror:
+
+```powershell
+vs_BuildTools.exe --layout C:\vs-layout --add Microsoft.VisualStudio.Workload.VCTools --lang en-US
+```
+
+Carry `C:\vs-layout` across and install from it. After that `pip` and `uv` build the
+remaining sdists themselves, with every build requirement already in the mirror.

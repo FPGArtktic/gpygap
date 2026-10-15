@@ -97,6 +97,55 @@ from teams and mirrors every locked version exactly, without re-resolving, so a 
 that works online installs offline unchanged. Keeping them apart keeps the curated list
 readable and makes it obvious which entries can be dropped when a team leaves.
 
+## Wheels are built here, not on the developer machine
+
+A package with no wheel for a target used to be shipped as an sdist and compiled at
+install time, which in an air-gapped network means every developer machine needs a
+compiler, headers and sometimes Rust. The online side has all of that already, so it
+builds the wheel and the offline side installs a binary. The rule became testable in one
+line: every in-scope requirement must install with `--only-binary :all:`. To revisit:
+only if building turns out to produce wheels that differ meaningfully from what the
+project would have published.
+
+## Wheel builds run in sibling containers, not nested
+
+The mirror's own image deliberately has no compilers, and the pypa manylinux images have
+the libc floor, the interpreters and auditwheel. So builds run as siblings, launched
+through a container engine socket the wrapper passes in, rather than inside the mirror's
+container or in a nested engine. Nested rootless podman needs privileged flags and the
+vfs storage driver, and is slower; a sibling is exactly as isolated as the gpygap
+container itself. Cost: the container can start containers, which on a single-user build
+host is the authority it already had. `GPYGAP_NO_BUILD_SOCKET=1` withholds it.
+
+## podman is driven by its own client, not the Docker-compatible one
+
+podman serves a Docker-compatible API, and one client for both engines would be simpler.
+It does not work: a container created through that layer comes up unable to fork
+("Resource temporarily unavailable") while the identical container created through
+podman's own API is fine. The image therefore carries both clients and picks the one
+matching the socket it was given. To revisit: when the compatibility layer stops doing
+this.
+
+## No Windows or macOS builder, and the list of routes that do not work
+
+Container images of Windows need a Windows host, because a container shares the host
+kernel. xwin and clang-cl solve the toolchain but not the build system: setuptools takes
+its target from the running interpreter, so on Linux it emits a `.so` and a
+`linux_x86_64` tag; `crossenv` targets Unix hosts. .NET's cross-compilation shares no
+machinery with CPython extensions. Wine with MSVC does work, because the interpreter that
+runs is really Windows Python, and was rejected as fragile and licence-encumbered. What
+covers Windows instead: the `py3-none-any` wheels built here, a Windows machine dropping
+`pip wheel` output into `build.external_dir`, and the compiler on the developer machine
+for the remainder, which the report names. To revisit: if a Windows build host becomes
+available, it plugs into `build.external_dir` with no code change.
+
+## Every mirror file records where it came from
+
+`MirrorFile.origin` is `upstream` or `built`. A built wheel has no URL: nothing can
+re-download it, so losing it means rebuilding it, and the prune has to be told it exists.
+Publishing the list in `MIRROR-INFO.json` also lets the offline side see which files did
+not come from PyPI, which is a question an auditor will eventually ask.
+
 ## The published artifact keeps the `MIRROR-` prefix
 
 The tool is `gpygap`, but the files it publishes are `MIRROR-VERSION`,

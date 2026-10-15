@@ -7,7 +7,10 @@ Read in this order when you are new to the project:
 | [architecture.md](architecture.md) | What happens in a run, which module does what, how data flows. |
 | [verification.md](verification.md) | How the tool proves the offline mirror is complete, and how it heals gaps. |
 | [file-formats.md](file-formats.md) | Every file the tool writes: mirror layout, deltas, state directory. |
+| [pipeline.md](pipeline.md) | The whole run from the top-1000 list to an import offline, stage by stage, with diagrams. |
+| [wheels.md](wheels.md) | The wheels the mirror builds itself, and why Windows is the exception. |
 | [operations.md](operations.md) | Running it (container), monthly routine, transfer, what to do when a run fails. |
+| [online-on-windows.md](online-on-windows.md) | Running the online side on Windows, where it can build its own Windows wheels. |
 | [development.md](development.md) | Working on the code: commands, module layout, invariants, style. |
 | [decisions.md](decisions.md) | Why things are the way they are; read before changing a design choice. |
 
@@ -19,6 +22,7 @@ In the repository root, next to these pages:
 | `gpygap.toml` | Every configuration key, documented inline. |
 | `packages.txt` | Our own packages, mirrored on top of the top list. |
 | `intake/` | Team lock files, mirrored exactly as locked. |
+| `CONTRIBUTING.md` | How to propose a change: setup, what a finished change looks like, commit style. |
 | `LICENSE` | GPL-3.0-or-later. |
 
 ## Glossary
@@ -41,3 +45,8 @@ In the repository root, next to these pages:
 | scope | Everything a run must make installable: top-N, `packages.extra`, packages.txt, intake, their extras, build backends. |
 | pin | `name==version` from an intake lock file, resolved `--no-deps`. |
 | delta | Export of changes since the last export, applied offline with `gpygap_offline.py apply`. |
+| target | One `(platform, Python version)` pair a wheel has to exist for (`BuildTarget`). |
+| built wheel | A wheel this mirror compiled because upstream published none; `origin = "built"`, no URL. |
+| universal wheel | `py3-none-any`: pure Python, installs on every target whatever machine built it. |
+| gap | A target still without a wheel after building, listed in `MIRROR-GAPS.json`. |
+| external wheels | Wheels built on another machine (a Windows host) and adopted from `build.external_dir`. |

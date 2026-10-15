@@ -71,6 +71,36 @@ build_check = true
 # How many times to fetch what the checks found missing and check again.
 heal_rounds = 2
 
+[build]
+# Build a wheel for every target an sdist has no upstream wheel for, so that nothing
+# is compiled on a developer machine in the air-gapped network. Builds run in sibling
+# containers (pypa manylinux/musllinux images) with the network off; bin/gpygap passes
+# the container engine socket in. Turn this off and such targets are reported as gaps
+# and the sdist is shipped instead, the way it worked before.
+wheels = true
+# Client used to launch the builder containers. The image ships the docker CLI, which
+# drives podman's API socket as well as docker's.
+engine = "docker"
+# Wheels built on a machine this one cannot imitate (a Windows host, a CI runner)
+# are dropped here and adopted on the next run; see docs/wheels.md.
+# external_dir = "incoming-wheels"
+# When the container engine lives on a different kind of host than this process --
+# Docker Desktop on Windows, where the mirror is /work/gpygap in here and C:\gpygap
+# out there -- these translate paths for the sibling containers. Both or neither.
+# container_root = "/work"
+# host_root = "C:\\gpygap"
+# Override the builder image of a platform: "platform-key=image". Defaults come from
+# the platform itself and are pinned, so the libc floor cannot drift between runs.
+# images = ["linux-x86_64=quay.io/pypa/manylinux_2_28_x86_64:2026.10.10-1"]
+images = []
+# Projects never built locally, by name.
+exclude = []
+# Parallel sdists being built. Each one builds its targets in sequence, because the
+# first build is often py3-none-any, which covers all of them.
+jobs = 2
+# Seconds allowed for one wheel build.
+timeout = 1800
+
 [performance]
 # Parallel uv resolutions.
 jobs = 8

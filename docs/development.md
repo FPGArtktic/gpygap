@@ -43,7 +43,8 @@ verification.
 | `sync.py` | Orchestrates one run; reads top to bottom as the list of steps. |
 | `fetcher.py` | Resolve → plan → download → build-requirement rounds, for any set of requests. |
 | `resolver.py` | `ResolveRequest` (universal or one platform, optional `--no-deps`), `uv pip compile --format pylock.toml`, cache, retries, stale fallback. |
-| `selection.py` | Wheel tag and marker filtering per platform; builds the `MirrorPlan`. |
+| `selection.py` | Wheel tag and marker filtering per platform; builds the `MirrorPlan`; records which targets have no wheel. |
+| `wheelbuild.py` | Builds the wheels upstream never published, in sibling containers; caches results across runs. |
 | `extras.py` | One requirement per extra (`Provides-Extra`, local file or remote PEP 658) of the top projects, `packages.txt` and intake requirements; keeps version specifiers. |
 | `intake.py` | Team files in `intake/`: `uv.lock`, `pylock*.toml` (pins), `*.txt` (requirements); `.md` and dotfiles ignored. |
 | `toplist.py` | Top-N list (hugovk/top-pypi-packages), cached copy as fallback. |
@@ -80,6 +81,15 @@ Breaking one of these breaks the guarantee the mirror exists to give.
   top list falls back to the cached copy, and `max_prune_ratio` blocks mass deletion.
 - **"Complete" means no install check `missing` and no build check `missing-deps` after
   healing.** Never weaken a check to make a run pass; heal the gap or report it.
+- **Every in-scope requirement installs from wheels alone on every buildable target**, or
+  the gap is named in the report. Never relax `--only-binary` to make a run pass.
+- **A built wheel is recorded with `origin = "built"`** and never overwrites an upstream
+  wheel of the same name. It reaches the manifest only because `sync._commit` is handed
+  the builder's files; without that the prune would delete a file nothing can
+  re-download.
+- **A wheel build is reproducible from `(sdist sha256, platform, python, builder image)`**
+  -- that tuple is the cache key, and a cached failure is a result, not a reason to
+  retry. A cache entry whose wheel is gone is dropped and rebuilt.
 - **Verification caches start empty each round.** A check must never see the online uv
   cache, or it will pass on a file the mirror does not have.
 - **A file under its final name in the mirror is complete and hash-verified.** Downloads
