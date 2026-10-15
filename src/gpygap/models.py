@@ -8,6 +8,10 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 DistKind = Literal["sdist", "wheel"]
+
+FREE_THREADED_SUFFIX = "t"
+"""Marks a free-threaded CPython in a target version: ``3.13t``. It is an ABI, not a
+version, so it is stripped before any version string reaches uv."""
 FileOrigin = Literal["upstream", "built"]
 
 
@@ -102,6 +106,8 @@ class MirrorInfo:
     projects: int
     files: int
     bytes: int
+    built_wheels: tuple[str, ...] = ()
+    """Wheels this mirror compiled because upstream published none for a target."""
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
