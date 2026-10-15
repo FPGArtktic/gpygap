@@ -1,0 +1,86 @@
+# Configuration of the offline PyPI mirror.
+#
+# Every key is optional; the values below are the defaults. Unknown keys are
+# rejected, so a typo fails loudly. Relative paths are relative to this file.
+
+[mirror]
+# Directory to serve over HTTP and to carry into the air-gapped network.
+output = "gpygap"
+# Caches, logs and run history. Stays on the online machine; never copy it offline.
+state_dir = "gpygap-state"
+# uv's cache used while building the mirror (default: <state_dir>/uv-cache).
+# uv_cache_dir = "/var/cache/gpygap-uv"
+# uv executable.
+uv = "uv"
+
+[packages]
+# How many of the most downloaded PyPI projects to mirror.
+top = 1000
+# Where the ranking comes from (format of hugovk/top-pypi-packages); first reachable wins.
+top_sources = [
+    "https://hugovk.github.io/top-pypi-packages/top-pypi-packages.min.json",
+    "https://raw.githubusercontent.com/hugovk/top-pypi-packages/main/top-pypi-packages.min.json",
+]
+# Additional requirements, always mirrored (any PEP 508 requirement).
+extra = []
+# Our own list of packages to mirror on top of the top list; see the file's header.
+extra_file = "packages.txt"
+# Projects never mirrored; the next project in the ranking takes their place.
+exclude = []
+# Mirror every extra (`uvicorn[standard]`, `requests[socks]`...) of the top projects,
+# packages.txt and intake requirements files, each resolved on its own.
+extras = true
+# Extras to skip, by name, for every project (e.g. ["dev", "docs", "test"]).
+extras_exclude = []
+# Directory where teams drop uv.lock, pylock*.toml or requirements*.txt files;
+# everything in them is mirrored and checked, including old pinned versions.
+requirements_dir = "intake"
+# Source distributions: "all", "needed" (only when some target has no wheel), "none".
+sdists = "all"
+
+[targets]
+# CPython versions developers use.
+python = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+# Available: linux-x86_64, linux-aarch64, win-amd64, win-arm64, macos-arm64, macos-x86_64
+platforms = ["linux-x86_64", "win-amd64"]
+
+[upstream]
+# Index to mirror from (e.g. a company proxy of PyPI).
+index_url = "https://pypi.org/simple"
+
+[sync]
+# Keep files required by any of the last N runs. 1 behaves like `rsync --delete`:
+# a project that drops out of the top list disappears with its dependencies.
+# 2 gives developers one sync period to move off removed versions.
+keep_runs = 1
+# Refuse to delete more than this share of the mirror in one run (safety net).
+max_prune_ratio = 0.5
+# Set to false to never delete anything.
+prune = true
+# Rounds of mirroring build requirements of sdists that some target must build.
+build_deps_rounds = 3
+# Also mirror uv binaries and Python interpreters for the target platforms.
+with_tools = true
+# Check every requirement x Python x platform against the finished index, offline,
+# like a developer's uv would. The mirror is only called complete if nothing fails
+# that works upstream.
+verify = true
+# Build every sdist some target must build, offline, to prove its build
+# requirements (including ones requested at build time) are in the mirror.
+build_check = true
+# How many times to fetch what the checks found missing and check again.
+heal_rounds = 2
+
+[performance]
+# Parallel uv resolutions.
+jobs = 8
+# Parallel downloads.
+download_jobs = 16
+# Attempts per resolution (downloads get two more).
+retries = 2
+# Seconds allowed for one resolution.
+resolve_timeout = 900
+# Seconds allowed for one offline sdist build in the build check.
+build_timeout = 600
+# Resolutions younger than this are reused, so an interrupted run resumes quickly.
+max_age_hours = 20
