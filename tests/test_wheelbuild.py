@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 import pytest
 
@@ -126,7 +126,12 @@ def test_an_excluded_project_is_never_built(tmp_path: Path) -> None:
     assert [g.reason for g in summary.gaps] == ["excluded"]
 
 
-def test_windows_has_no_builder_and_says_so(tmp_path: Path) -> None:
+def test_a_linux_host_reports_windows_as_having_no_builder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pinned to Linux on purpose: the same call on a Windows host builds the wheel
+    # instead, and this test is about what a Linux host reports.
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "linux")
     config = config_at(tmp_path)
     factory = WheelFactory(config)  # type: ignore[arg-type]
     sdist = tmp_path / "gpygap" / "packages" / "a" / "a-1.tar.gz"
@@ -342,7 +347,8 @@ def test_a_windows_host_builds_its_own_wheels_and_nothing_else(
     assert not factory.builds_natively(PLATFORMS["macos-arm64"])
 
 
-def test_a_linux_host_builds_no_windows_wheels(tmp_path: Path) -> None:
+def test_a_linux_host_builds_no_windows_wheels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "linux")
     factory = WheelFactory(config_at(tmp_path))  # type: ignore[arg-type]
     assert not factory.builds_natively(PLATFORMS["win-amd64"])
     assert factory.image_for(PLATFORMS["linux-x86_64"]) is not None
@@ -357,25 +363,31 @@ def test_the_engine_may_be_a_command_not_just_a_binary(tmp_path: Path) -> None:
     assert factory._engine_runs_in_wsl
 
 
+# The flavour is stated rather than inherited from whatever runs the suite: these
+# functions translate between path styles, so a test that takes its style from the
+# host is testing the host.
 @pytest.mark.parametrize(
     ("given", "expected"),
     [
-        ("C:/gpygap/mirror", "/mnt/c/gpygap/mirror"),
-        ("D:/a/_temp/out", "/mnt/d/a/_temp/out"),
-        ("/srv/gpygap", "/srv/gpygap"),
-        ("relative/path", "relative/path"),
+        (PureWindowsPath("C:/gpygap/mirror"), "/mnt/c/gpygap/mirror"),
+        (PureWindowsPath("D:/a/_temp/out"), "/mnt/d/a/_temp/out"),
+        (PurePosixPath("/srv/gpygap"), "/srv/gpygap"),
+        (PurePosixPath("relative/path"), "relative/path"),
     ],
 )
-def test_windows_paths_are_translated_the_way_wsl_sees_them(given: str, expected: str) -> None:
-    assert windows_path_in_wsl(Path(given)) == expected
+def test_windows_paths_are_translated_the_way_wsl_sees_them(given: PurePath, expected: str) -> None:
+    assert windows_path_in_wsl(given) == expected
 
 
 def test_paths_are_left_alone_when_the_engine_shares_this_filesystem(tmp_path: Path) -> None:
     factory = WheelFactory(config_at(tmp_path))  # type: ignore[arg-type]
-    assert factory.engine_path(Path("/srv/gpygap")) == "/srv/gpygap"
+    assert factory.engine_path(PurePosixPath("/srv/gpygap")) == "/srv/gpygap"
+    assert factory.engine_path(PureWindowsPath("C:/gpygap")) == "C:\\gpygap"
 
 
 def test_an_explicit_mapping_wins_over_everything(tmp_path: Path) -> None:
     config = config_at(tmp_path, '[build]\ncontainer_root = "/work"\nhost_root = "C:\\\\gpygap"\n')
     factory = WheelFactory(config)  # type: ignore[arg-type]
-    assert factory.engine_path(Path("/work/gpygap/packages")) == "C:\\gpygap\\gpygap\\packages"
+    # Spelled either way: the prefix is configuration, the path comes from the host.
+    assert factory.engine_path(PurePosixPath("/work/gpygap/packages")) == "C:\\gpygap\\gpygap\\packages"
+    assert factory.engine_path(PureWindowsPath("/work/gpygap/packages")) == "C:\\gpygap\\gpygap\\packages"

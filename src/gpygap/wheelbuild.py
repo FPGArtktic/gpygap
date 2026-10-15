@@ -37,7 +37,7 @@ import tempfile
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
@@ -190,7 +190,7 @@ def _cache_key(sdist_sha256: str, target: BuildTarget, image: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def windows_path_in_wsl(path: Path) -> str:
+def windows_path_in_wsl(path: PurePath) -> str:
     """``C:\\a\\b`` as WSL sees it: ``/mnt/c/a/b``. Any other path is left alone."""
     text = str(path).replace("\\", "/")
     if len(text) > 1 and text[1] == ":" and text[0].isalpha():
@@ -270,7 +270,7 @@ class WheelFactory:
             return "podman"
         return "docker"
 
-    def engine_path(self, path: Path) -> str:
+    def engine_path(self, path: PurePath) -> str:
         """Translate a path this process sees into one the container engine sees.
 
         Three cases, and only the first two need configuring:
@@ -285,10 +285,12 @@ class WheelFactory:
         container_root = self._config.build_container_root
         host_root = self._config.build_host_root
         text = str(path)
-        if container_root and host_root and text.startswith(container_root):
-            relative = text[len(container_root) :].lstrip("/\\")
+        normalized = text.replace("\\", "/")
+        root = container_root.replace("\\", "/") if container_root else None
+        if root and host_root and normalized.startswith(root):
+            relative = normalized[len(root) :].lstrip("/")
             separator = "\\" if "\\" in host_root else "/"
-            return host_root.rstrip("/\\") + separator + relative.replace("\\", "/").replace("/", separator)
+            return host_root.rstrip("/\\") + separator + relative.replace("/", separator)
         if self._engine_runs_in_wsl:
             return windows_path_in_wsl(path)
         return text
