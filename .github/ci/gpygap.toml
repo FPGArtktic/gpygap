@@ -13,11 +13,25 @@ top = 5
 # pip itself must be mirrored: distro pip is often too old to read the PEP 658 sidecars
 # this index serves (Debian 12 ships 23.0.1, which needs 23.1). In production the top
 # list already includes pip; with top = 5 it has to be named.
-extra = ["pip"]
+extra = [
+    "pip",
+    # Two projects that publish no wheel at all, so the wheel builder is exercised
+    # rather than assumed: docopt is pure Python and builds to py3-none-any, which
+    # covers every target including Windows; pysendfile is a C extension and goes
+    # through pip wheel plus auditwheel in a manylinux container.
+    "docopt",
+    "pysendfile; sys_platform == 'linux'",
+]
 # Extras multiply the resolution count and pull in the ML stack; not what CI tests.
 extras = false
 # Only keep an sdist when some target has no wheel for it.
 sdists = "needed"
+
+[build]
+# Wheels built on a machine this one cannot imitate are dropped here; the Windows
+# runner fills it between the two mirror passes. Absent on the first pass, which
+# is exactly how it behaves in production before a Windows builder exists.
+external_dir = "../../ci-windows-wheels"
 
 [targets]
 # The Python versions the distro images in consume-linux ship, plus one ahead:

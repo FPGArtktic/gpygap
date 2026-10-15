@@ -83,6 +83,61 @@ jobs:
           path: ${{ runner.temp }}/ci-mirror.tar.gz
           retention-days: 1
 
+  wheels-windows:
+    # The one gap a Linux host cannot close itself. windows-latest has MSVC, so it
+    # reads MIRROR-GAPS.json, builds exactly those sdists, and hands the wheels back.
+    needs: mirror
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-mirror
+          path: ${{ runner.temp }}
+      - name: Unpack the mirror
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/mirror" && tar -xzf "$RUNNER_TEMP/ci-mirror.tar.gz" -C "$RUNNER_TEMP/mirror"
+      - name: Build what the mirror could not
+        shell: bash
+        run: python -I .github/ci/build-windows-wheels.py "$RUNNER_TEMP/mirror" "$RUNNER_TEMP/wheels"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-wheels-${{ matrix.python }}
+          path: ${{ runner.temp }}/wheels
+          if-no-files-found: ignore
+          retention-days: 1
+
+  mirror-merge:
+    # Second pass: the same sync, with build.external_dir now holding what Windows
+    # built. This is the production shape too -- one run publishes the gaps, a
+    # Windows builder fills them, the next run folds them in.
+    needs: wheels-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-wheels-*
+          merge-multiple: true
+          path: ci-windows-wheels
+      - name: Rebuild the mirror with the Windows wheels folded in
+        run: bin/gpygap sync --config .github/ci/gpygap.toml
+      - name: Pack it
+        run: tar -czf "$RUNNER_TEMP/ci-mirror.tar.gz" -C ci-mirror .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-mirror-merged
+          path: ${{ runner.temp }}/ci-mirror.tar.gz
+          retention-days: 1
+
   consume-linux:
     needs: mirror
     runs-on: ubuntu-latest
@@ -90,21 +145,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: debian
+          # 12 is oldstable and ships pip 23.0.1, which is the version the PEP 658
+          # metadata bug bites; keeping it in the matrix is what keeps the offline
+          # pip bootstrap below honest.
+          - name: debian-12
             image: debian:12
-            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          - name: debian-13
+            image: debian:13
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          - name: ubuntu-24.04
+            image: ubuntu:24.04
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          - name: ubuntu-26.04
+            image: ubuntu:26.04
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
             python: python3
           - name: rhel
             image: registry.access.redhat.com/ubi9/ubi
-            setup: dnf -y install python3.12 && dnf clean all
+            setup: dnf -y install python3.12 curl && dnf clean all
             python: python3.12
           - name: arch
             image: archlinux:latest
-            setup: pacman -Sy --noconfirm python
+            setup: pacman -Sy --noconfirm python curl
             python: python3
           - name: alpine
             image: alpine:3.20
-            setup: apk add --no-cache python3
+            setup: apk add --no-cache python3 curl ca-certificates
             python: python3
     steps:
       - uses: actions/checkout@v4
@@ -122,6 +192,7 @@ jobs:
             'FROM ${{ matrix.image }}' \
             'RUN ${{ matrix.setup }}' \
             'RUN ${{ matrix.python }} -m venv /venv' \
+            'RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh' \
             | docker build -t gpygap-consume:${{ matrix.name }} -
       - name: Verify every checksum, offline
         run: |
@@ -130,11 +201,12 @@ jobs:
             gpygap-consume:${{ matrix.name }} \
             /venv/bin/python -I /mirror/gpygap_offline.py verify /mirror
       - name: Install from wheels alone, offline
-        # pip is upgraded from the mirror first, offline: Debian 12 ships pip 23.0.1,
+        # pip is upgraded from the mirror first, offline. Debian 12 ships pip 23.0.1,
         # which rejects a wheel whose metadata Name normalizes differently from the
-        # requested name (typing_extensions vs typing-extensions) when it reads the
-        # PEP 658 sidecar. Fixed in pip 23.1. Doing it here also proves the mirror can
-        # bootstrap its own tooling with the network off.
+        # requested name (typing_extensions vs typing-extensions) once it reads the
+        # PEP 658 sidecar this index serves; fixed in pip 23.1. Doing it here is both
+        # the documented remedy and a proof that the mirror can bootstrap its own
+        # tooling with the network off.
         run: |
           docker run --rm --network none \
             -v "$RUNNER_TEMP/mirror:/mirror:ro" \
@@ -144,10 +216,10 @@ jobs:
                      --disable-pip-version-check --index-url file:///mirror/simple \
                      --upgrade pip &&
                    /venv/bin/python -m pip --version &&
-                   /venv/bin/python -I /consume.py /mirror linux-x86_64'
+                   /venv/bin/python -I /consume.py /mirror linux-x86_64 pip,uv'
 
   consume-windows:
-    needs: mirror
+    needs: mirror-merge
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -165,7 +237,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: actions/download-artifact@v4
         with:
-          name: ci-mirror
+          name: ci-mirror-merged
           path: ${{ runner.temp }}
       - name: Unpack the mirror
         shell: bash
@@ -173,6 +245,10 @@ jobs:
       - name: Verify every checksum
         shell: bash
         run: python -I "$RUNNER_TEMP/mirror/gpygap_offline.py" verify "$RUNNER_TEMP/mirror"
-      - name: Install from wheels alone
+      - name: Install uv
+        run: irm https://astral.sh/uv/install.ps1 | iex
+        shell: powershell
+
+      - name: Install from wheels alone, with pip and uv
         shell: bash
-        run: python -I .github/ci/consume.py "$RUNNER_TEMP/mirror" win-amd64
+        run: python -I .github/ci/consume.py "$RUNNER_TEMP/mirror" win-amd64 pip,uv
