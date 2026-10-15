@@ -44,8 +44,9 @@ on the other side of the gap needs no compiler.
     The monthly routine, moving deltas by USB, DVD or a data diode, and what to do when
     a run fails.
 
-    [:octicons-arrow-right-24: Operations](operations.md) ·
-    [Online side on Windows](online-on-windows.md)
+    [:octicons-arrow-right-24: Where to run it](setups.md) ·
+    [Operations](operations.md) ·
+    [On Windows](online-on-windows.md)
 
 -   :material-shield-alert:{ .lg .middle } **Known vulnerabilities**
 

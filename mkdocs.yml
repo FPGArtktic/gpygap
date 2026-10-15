@@ -71,6 +71,7 @@ nav:
       - advisories.md
       - file-formats.md
   - Running it:
+      - setups.md
       - operations.md
       - online-on-windows.md
   - Contributing:

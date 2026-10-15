@@ -153,6 +153,57 @@ different `pydantic` or `click` requirements) never block anything: the mirror s
 several versions. Details: [docs/architecture.md](docs/architecture.md),
 [docs/verification.md](docs/verification.md).
 
+## Where to run it
+
+One machine needs internet access. Which operating system it runs decides one thing:
+**which wheels it can compile for the packages that publish none.** Everything else is
+identical.
+
+| | A. Linux | B. Linux + Windows builder | C. Windows |
+| --- | --- | --- | --- |
+| Machines | 1 | 2 | 1 |
+| manylinux / musllinux wheels | built | built | built, through WSL2 |
+| `win_amd64` wheels | **not built** | built on the second machine | built on the same machine |
+| `py3-none-any` wheels | built, and they cover Windows too | built | built |
+| One command per run | yes | no, two phases | yes |
+
+**A** is the default and what the Quickstart above describes. Most of the top 1000
+publish Windows wheels, and the pure-Python packages that publish none are covered
+anyway, because their `py3-none-any` wheel is built on Linux and installs everywhere.
+What is left is listed by name in `MIRROR-GAPS.json`.
+
+**B** adds a Windows machine that fills those gaps. It needs the MSVC Build Tools, a copy
+of the mirror and nothing else — no gpygap, no configuration:
+
+```powershell
+python .\build-windows-wheels.py D:\mirror D:\wheels   # once per Python version
+```
+
+Copy the result to wherever `build.external_dir` points on the Linux machine; the next
+sync adopts it.
+
+**C** is the only single machine that can compile for everything, because it has both
+toolchains: MSVC for Windows and, through WSL2, Linux containers for the rest.
+
+```powershell
+wsl --install -d Ubuntu
+wsl -d Ubuntu -- sudo apt-get install -y podman
+uv sync
+uv run gpygap sync
+```
+
+```toml
+# gpygap.toml
+[build]
+wheels = true
+engine = "wsl -d Ubuntu podman"   # one engine; paths are translated for WSL
+```
+
+None of them builds macOS wheels. The toolchain only runs on macOS.
+
+Full instructions for each, including what CI does and does not cover:
+[docs/setups.md](docs/setups.md).
+
 ## Requirements (online side)
 
 - Linux with podman. Nothing else on the host.
