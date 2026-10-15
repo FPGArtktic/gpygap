@@ -8,7 +8,8 @@
 Installing from the mirror is tested on every push, offline, from a real container of each
 system &mdash; not asserted:
 
-[![Debian 12](https://img.shields.io/badge/Debian%2012-verified%20offline-A81D33?logo=debian&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
+[![Debian](https://img.shields.io/badge/Debian%2012%20%7C%2013-verified%20offline-A81D33?logo=debian&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu%2024.04%20%7C%2026.04-verified%20offline-E95420?logo=ubuntu&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 [![RHEL 9](https://img.shields.io/badge/RHEL%209%20%28UBI%29-verified%20offline-EE0000?logo=redhat&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-verified%20offline-1793D1?logo=archlinux&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 [![Alpine](https://img.shields.io/badge/Alpine-verified%20offline-0D597F?logo=alpinelinux&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
@@ -19,6 +20,10 @@ packages, with every dependency, extra and build requirement**, for Windows and 
 several Python versions. Developers install with `uv` (or `pip`) exactly as they would from
 PyPI.
 
+- **No compiler needed offline.** When a project publishes no wheel for a target, the
+  mirror builds one, in a container, while it still has a toolchain — so installing in
+  the air-gapped network is a plain binary install. See [Limitations](#limitations) for
+  the one case that still is not.
 - **Verified before it ships.** Every package is test-installed offline from the mirror for
   every Python version and platform (Windows is checked from Linux). Anything missing is
   fetched automatically and checked again. Each run ends with `Mirror is COMPLETE` or a
@@ -255,6 +260,23 @@ rsync -a --delete /media/usb/gpygap/ /srv/gpygap/     # offline
 python3 /srv/gpygap/gpygap_offline.py verify /srv/gpygap   # or: sha256sum -c MIRROR-SHA256SUMS
 ```
 
+### The medium: USB, DVD/Blu-ray, or a data diode
+
+A delta is an ordinary directory, so it travels on whatever the security policy allows.
+Nothing about the format assumes a particular medium, and every route is covered by the
+same two guarantees: each file carries its SHA-256, and each delta names the mirror
+version it expects, so a damaged, skipped or repeated delta is refused before the first
+file is written.
+
+| Medium | How |
+| --- | --- |
+| **USB / removable disk** | Export straight onto it: `GPYGAP_MOUNTS=/media/usb bin/gpygap sync --export-delta /media/usb/delta-2026-10`. |
+| **DVD or Blu-ray** | Burn the delta directory as a data disc (`growisofs -Z /dev/sr0 -R -J delta-2026-10/`). A delta larger than the disc is split into volumes: `tar -cf - delta-2026-10 \| split -b 23G - delta.tar.` burns one part per Blu-ray; offline, `cat delta.tar.* \| tar -xf -` puts it back. |
+| **Data diode** | One-way, so there is no asking for a resend: stream the delta as a tar (`tar -cf - delta-2026-10`) and let the receiver unpack it. The checksums tell the receiver whether the stream arrived intact, and the version chain tells it whether a delta was lost on the way. If one was, the next full export (`--full-export`) resynchronizes without needing anything back from the offline side. |
+
+Disc capacities, for sizing an export: DVD 4.7 GB, dual-layer DVD 8.5 GB, Blu-ray 25 GB,
+dual-layer Blu-ray 50 GB. `bin/gpygap sync --plan-only` gives the size before you export.
+
 ### Checking the offline side
 
 ```bash
@@ -359,11 +381,18 @@ CI does this on every distro before installing anything, so the path is tested.
 
 - The mirror holds the top projects, `packages.txt`, intake files, their extras and
   dependencies. Anything else must be added to `packages.txt`.
-- CPython only: no PyPy, no free-threaded builds (`3.13t`). Linux means glibc (manylinux:
-  Ubuntu, Debian, RHEL, ...), not Alpine (musl).
-- A package without a wheel for a platform is built from source on install. The mirror
-  has the sdist and every build requirement (proven by an offline build), but the
-  developer machine needs the compiler (MSVC, gcc, ...).
+- CPython only: no PyPy, no GraalPy. Everything else CPython ships is a target: glibc
+  (manylinux) and musl (Alpine) on x86-64 and aarch64, Windows x86-64, and the
+  free-threaded builds (`3.13t`, `3.14t`) alongside the ordinary ones.
+- **Windows is the one place a compiler can still be needed.** A Linux host cannot build
+  a Windows wheel — a container shares the host kernel, and setuptools has no
+  cross-build mode — so Windows gets the wheels the projects published, plus every
+  `py3-none-any` wheel the mirror built, which is most of what would otherwise be
+  missing. Whatever is left is listed by name in the run report and in
+  `MIRROR-GAPS.json`, and there are two ways to close it: point `build.external_dir` at
+  a directory a Windows machine drops `pip wheel` output into, or install the MSVC Build
+  Tools on the developer machines (`vs_BuildTools.exe --layout` makes an offline
+  installer that crosses the air gap).
 - `torch` from PyPI pulls CUDA libraries on Linux (`nvidia-*`, several GB per version).
   `--plan-only` shows the size per project; exclude what you do not need. Indexes other
   than PyPI (such as download.pytorch.org) are not mirrored.
@@ -389,6 +418,10 @@ bin/gpygap sync --top 10                  # end-to-end test (container)
 
 See [docs/development.md](docs/development.md) for the module layout and the invariants
 to keep.
+
+## Author
+
+[Mateusz Okulanis](https://fpgartktic.github.io/) &mdash; <https://fpgartktic.github.io/>
 
 ## License
 
