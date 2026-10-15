@@ -272,6 +272,32 @@ different `pydantic` or `click` requirements) never block anything: the mirror s
 several versions. Details: [docs/architecture.md](docs/architecture.md),
 [docs/verification.md](docs/verification.md).
 
+## How well does it work
+
+The promise is narrow and testable: **every in-scope requirement installs from wheels
+alone, offline, with no compiler on the developer's machine.** Every push proves it on a
+mirror built from scratch:
+
+| Install checks from wheels | Still needing a source build | Unsatisfiable | Built here |
+| --- | --- | --- | --- |
+| 848 of 852 | 4 (Windows, from a Linux host) | **0** | 27 |
+
+That mirror is then installed *from*, offline, on seven Linux distributions — Debian 12
+and 13, Ubuntu 24.04 and 26.04, RHEL 9, Arch, Alpine (musl) — and on Windows with Python
+3.12 and 3.13, using both `pip` and `uv`, always `--only-binary :all:`, and on Linux under
+`--network none`. A source build or a packet leaving the container fails the run. The
+whole matrix runs twice: once on what Linux alone could build, then again after a Windows
+runner has supplied the wheels Linux cannot make.
+
+At full size the builder carries more weight. A top-1000 run compiles **145 wheels
+upstream never published**, out of 404 attempts across platforms and Python versions, and
+writes what it could not build into `MIRROR-GAPS.json` with a reason — so the gap is read
+on the online side instead of discovered behind the air gap. Separately, an advisory scan
+of the full mirror matched 2936 projects against OSV and wrote 967 findings into the
+mirror itself, so they travel with the packages.
+
+What it still cannot do: [Limitations](#limitations).
+
 ## Requirements (online side)
 
 - Linux with podman. Nothing else on the host.
