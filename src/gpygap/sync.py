@@ -139,6 +139,12 @@ def run_sync(config: Config, options: SyncOptions) -> int:
     _log_header(config, run_id)
 
     meta = DistMetaCache(config.output, config.state.dist_meta)
+    factory = WheelFactory(config)
+    if not options.plan_only:
+        # Before an hour of resolving and downloading, not after: a client that cannot
+        # reach an engine builds nothing, and finding that out at the end means the
+        # whole run produced a mirror that is wrong.
+        factory.check_engine_early()
     fetcher = Fetcher(config, meta, download=not options.plan_only)
     scope = _fetch_scope(config, fetcher, meta)
     if options.plan_only:
@@ -154,7 +160,6 @@ def run_sync(config: Config, options: SyncOptions) -> int:
 
     # Wheels are built against the published index, so this cannot run earlier; what
     # it produces then has to be committed and published again to reach the index.
-    factory = WheelFactory(config)
     _build_wheels(config, factory, fetcher)
     manifest, pruned = _commit(config, run_id, fetcher, tools, factory.files, force_prune=options.force_prune)
     info = _publish(config, run_id, scope, manifest, meta, built=factory.files, gaps=factory.gaps)

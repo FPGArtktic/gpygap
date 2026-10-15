@@ -361,6 +361,28 @@ class WheelFactory:
                 return None, "the build produced no wheel"
             return self._publish(wheels[0], sdist)
 
+    def check_engine_early(self) -> bool:
+        """Say at the start of a run whether wheels will be buildable at the end.
+
+        The build stage happens after resolution, download and the first publish, so
+        an engine that is not there is discovered an hour in -- by which time the run
+        has produced a mirror missing every wheel it was asked to compile. Asking now
+        costs a second and turns that into a sentence the operator reads before
+        walking away.
+        """
+        if not self._config.build_wheels:
+            return True
+        if self._engine_available():
+            log.info("Wheel builds will run with %r", self.engine)
+            return True
+        log.error(
+            "build.wheels is on but %r cannot reach a container engine. This run will "
+            "finish without building any of them. Fix the engine, or set "
+            "build.wheels = false to say so on purpose.",
+            self.engine,
+        )
+        return False
+
     # ---------------------------------------------------------------- ingest
 
     def ingest(self, build_sdists: Mapping[str, set[BuildTarget]]) -> list[BuiltWheel]:

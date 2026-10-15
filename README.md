@@ -342,10 +342,70 @@ Scheduling (cron, 03:00 on the 1st of each month):
 0 3 1 * * GPYGAP_MOUNTS=/export /opt/gpygap/bin/gpygap sync --export-delta /export/delta-$(date +\%Y-\%m) >> /var/log/gpygap.log 2>&1
 ```
 
-Logs live in `gpygap-state/logs/`: `<run>.log` (everything), `<run>-errors.log`
-(warnings and errors only; if it does not exist, the run was clean) and `<run>-report.json`
-(what was downloaded, deleted and verified). Troubleshooting:
-[docs/operations.md](docs/operations.md).
+## Did it work?
+
+A run that ends `Mirror is COMPLETE` with exit code 0 is good to ship. When it does not,
+these five checks answer *what* is wrong in about a minute, in the order worth asking.
+
+**1. What the run said about itself.** The last ten lines of the console are the summary;
+the same numbers are in the report:
+
+```bash
+python3 -m json.tool gpygap-state/logs/<run>-report.json | head -40
+```
+
+`verification.installs` is the one to read. `wheels` is what installs from a wheel alone;
+`build` needs a compiler on the developer machine; `unavailable` means the project does
+not support that target and never did, which is not your problem; **`missing` is the only
+one that means the mirror has a hole.**
+
+**2. Whether anything needed attention.** `gpygap-state/logs/<run>-errors.log` exists
+only if something warned or failed — its absence *is* the all-clear. Expected failures
+are logged at debug and never reach it.
+
+```bash
+awk '{print $4}' gpygap-state/logs/<run>-errors.log | sort | uniq -c | sort -rn
+```
+
+That one line tells you which part of the run was unhappy. `gpygap.verify` means missing
+packages; `gpygap.wheelbuild` means builds; `gpygap.resolver` means upstream.
+
+**3. Whether the wheels you asked for were built.** If `build.wheels` is on, this must
+not be zero:
+
+```bash
+python3 -c "import json;print(len(json.load(open('gpygap/MIRROR-INFO.json'))['built_wheels']))"
+```
+
+Zero, with `MIRROR-GAPS.json` full of `"reason": "no-engine"`, means no container engine
+was reachable and **nothing was built** — the mirror is missing every wheel it was
+supposed to compile. The run says so in the errors log too.
+
+**4. What is still missing, by name.** `MIRROR-GAPS.json` in the mirror lists every
+target left without a wheel and why:
+
+```bash
+python3 -c "
+import json,collections
+g=json.load(open('gpygap/MIRROR-GAPS.json'))['gaps']
+print(len(g),'gaps:',collections.Counter((x['platform'],x['reason']) for x in g))"
+```
+
+`no-builder` on `win-amd64` from a Linux host is expected — that is the documented gap,
+and it is what a Windows builder or `build.external_dir` closes. `build-failed` is worth
+reading the log for. `no-engine` is check 3.
+
+**5. What you are about to ship, security-wise.** `advisories.html` in the mirror is a
+report meant to be read; `MIRROR-ADVISORIES.json` is the same for scripts. Mirroring a
+thousand projects always finds something, which is why it does not fail the run by
+default — but it should be looked at before a delta crosses the gap.
+
+Exit codes: `0` complete; `1` something is still missing or a download failed; `2`
+configuration error; `130` interrupted — run the same command again to resume.
+
+Logs live in `gpygap-state/logs/`: `<run>.log` is everything, `<run>-errors.log` only
+what needs attention, `<run>-report.json` the machine-readable summary. A symptom-by-
+symptom table is in [docs/operations.md](docs/operations.md).
 
 ## Moving the mirror across the air gap
 

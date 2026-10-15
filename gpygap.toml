@@ -84,9 +84,12 @@ heal_rounds = 2
 # the container engine socket in. Turn this off and such targets are reported as gaps
 # and the sdist is shipped instead, the way it worked before.
 wheels = true
-# Client used to launch the builder containers. The image ships the docker CLI, which
-# drives podman's API socket as well as docker's.
-engine = "docker"
+# Client used to launch the builder containers. "auto" picks the one that matches the
+# socket bin/gpygap passed in, which is what you want: podman must be driven by its own
+# client, because a container created through its Docker-compatible API comes up unable
+# to fork. Set this only to force a specific client, and then make sure it is the right
+# one -- naming a client that cannot reach an engine means nothing gets built.
+engine = "auto"
 # Wheels built on a machine this one cannot imitate (a Windows host, a CI runner)
 # are dropped here and adopted on the next run; see docs/wheels.md.
 # external_dir = "incoming-wheels"
