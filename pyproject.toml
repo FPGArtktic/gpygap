@@ -1,0 +1,59 @@
+[project]
+name = "gpygap"
+version = "1.0.0"
+description = "Offline PyPI mirror of the most popular projects and their dependencies, for air-gapped networks"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "packaging>=24.0",
+    "tqdm>=4.66",
+]
+
+[project.urls]
+Homepage = "https://github.com/FPGArtktic/gpygap"
+Documentation = "https://gpygap.readthedocs.io/"
+Source = "https://github.com/FPGArtktic/gpygap"
+Issues = "https://github.com/FPGArtktic/gpygap/issues"
+
+[project.scripts]
+gpygap = "gpygap.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "types-tqdm",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF", "PTH", "N", "BLE", "PL"]
+ignore = [
+    "PLR0913",  # dataclass-like constructors legitimately take many arguments
+    "PLR2004",  # small literal constants read better inline
+]
+
+[tool.ruff.per-file-target-version]
+# Copied to the air-gapped side as gpygap_offline.py; must run on Python 3.9.
+"src/gpygap/offline.py" = "py39"
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
