@@ -14,19 +14,29 @@ top = 5
 # this index serves (Debian 12 ships 23.0.1, which needs 23.1). In production the top
 # list already includes pip; with top = 5 it has to be named.
 extra = [
+    # pip itself must be mirrored: distro pip is often too old to read the PEP 658
+    # sidecars this index serves (Debian 12 ships 23.0.1, which needs 23.1).
     "pip",
-    # Two projects that publish no wheel at all, so the wheel builder is exercised
-    # rather than assumed: docopt is pure Python and builds to py3-none-any, which
-    # covers every target including Windows; pysendfile is a C extension and goes
-    # through pip wheel plus auditwheel in a manylinux container.
-    "docopt",
-    "pysendfile; sys_platform == 'linux'",
-    # A C extension with no wheels and no external dependencies, which is the only
-    # shape that makes the Windows builder do real work: Linux can build it for
-    # Linux, and the result is a platform wheel that does nothing for win-amd64.
-    # So win-amd64 stays a gap until the Windows runner closes it, and the whole
-    # publish-gaps / build-elsewhere / adopt loop is exercised rather than assumed.
-    "llist",
+    #
+    # Everything below publishes **no wheel at all** on PyPI, and the versions are
+    # pinned so the set of builds CI performs is the same next month as today. Each
+    # was checked to still compile on 3.11 through 3.14, on glibc and on musl.
+    #
+    # Pure Python: one build each, producing py3-none-any, which then covers every
+    # target including Windows. This is the path that quietly closes most Windows
+    # gaps, so it is worth having more than one example of.
+    "docopt==0.6.2",
+    "dockerpty==0.4.1",
+    "termcolor2==0.0.3",
+    #
+    # C extensions: one build per platform and Python version, so these are what
+    # give the builder actual volume -- roughly two dozen compilations per run.
+    # llist is cross-platform, which is what leaves win-amd64 gaps for the Windows
+    # runner to fill; the other two are Linux-only and exercise auditwheel on both
+    # libc flavours.
+    "llist==0.7.1",
+    "pysendfile==2.0.1; sys_platform == 'linux'",
+    "pyxattr==0.8.1; sys_platform == 'linux'",
 ]
 # Extras multiply the resolution count and pull in the ML stack; not what CI tests.
 extras = false

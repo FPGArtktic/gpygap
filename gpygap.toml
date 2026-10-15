@@ -102,8 +102,10 @@ images = []
 # Projects never built locally, by name.
 exclude = []
 # Parallel sdists being built. Each one builds its targets in sequence, because the
-# first build is often py3-none-any, which covers all of them.
-jobs = 2
+# first build is often py3-none-any, which covers all of them. Four is a reasonable
+# default for a build host; a full run has hundreds of sdists to get through and two
+# at a time turns that into hours of mostly-idle machine.
+jobs = 4
 # Seconds allowed for one wheel build.
 timeout = 1800
 
