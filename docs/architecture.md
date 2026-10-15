@@ -46,7 +46,7 @@ Dependencies point downwards; nothing imports `sync` or `cli`.
 | Layer | Modules |
 | --- | --- |
 | entry | `cli` (argparse) → `sync` (orchestration) |
-| phases | `fetcher`, `verify`, `prune`, `index`, `checksums`, `tools`, `report` |
+| phases | `fetcher`, `wheelbuild`, `verify`, `prune`, `index`, `checksums`, `tools`, `report` |
 | domain | `resolver`, `selection`, `extras`, `intake`, `toplist`, `distmeta`, `manifest`, `downloader` |
 | base | `config`, `platforms`, `models`, `util`, `console` |
 | standalone | `offline` (stdlib only; also the offline-side script, see [decisions](decisions.md)) |
@@ -60,7 +60,11 @@ Key types:
   A failed resolution keeps the last good packages (`stale`).
 - `LockedPackage` / `DistFile` (`models.py`): what a `pylock.toml` lists.
 - `MirrorPlan` (`selection.py`): files the mirror must hold, sdists that need building.
-- `MirrorFile` (`models.py`): a file in the mirror and where it came from.
+- `BuildTarget` (`models.py`): one `(platform, python)` a wheel must exist for.
+- `MirrorFile` (`models.py`): a file in the mirror and where it came from -- `origin` is
+  `upstream` or `built`.
+- `WheelFactory` / `BuiltWheel` / `BuildGap` (`wheelbuild.py`): the builds, what they
+  cover, and what stayed uncovered. See [wheels](wheels.md).
 - `InstallCheck` / `InstallResult`, `BuildResult` (`verify.py`): verification outcomes.
 
 ## How a requirement becomes files

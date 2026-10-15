@@ -3,7 +3,7 @@
 # landing page on the forge and is deliberately not duplicated here.
 site_name: gpygap
 site_description: Offline PyPI mirror of the most popular projects, for air-gapped networks
-copyright: Copyright &copy; 2026 Mateusz Okulanis &middot; GPL-3.0-or-later
+copyright: Copyright &copy; 2026 <a href="https://fpgartktic.github.io/">Mateusz Okulanis</a> &middot; GPL-3.0-or-later
 
 docs_dir: docs
 repo_url: https://github.com/FPGArtktic/gpygap
@@ -30,9 +30,12 @@ theme:
 nav:
   - Overview: index.md
   - Architecture: architecture.md
+  - The pipeline, end to end: pipeline.md
+  - Wheels we build: wheels.md
   - Verification: verification.md
   - Files and formats: file-formats.md
   - Operations: operations.md
+  - Online side on Windows: online-on-windows.md
   - Development: development.md
   - Design decisions: decisions.md
 
@@ -43,8 +46,16 @@ markdown_extensions:
       permalink: true
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        # Diagrams are written as ```mermaid fences and render in the browser, so a
+        # class or activity diagram is reviewed as a diff like everything else.
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.inlinehilite
+  - attr_list
+  - md_in_html
 
 plugins:
   - search
