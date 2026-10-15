@@ -74,6 +74,11 @@ case "$wheel" in
     *-none-any.whl) mv "$wheel" "$out/" ;;
     *) auditwheel repair --plat "$plat_tag" --wheel-dir "$out" "$wheel" ;;
 esac
+# The builder is root inside its own container and the caller is not, so without
+# this the caller cannot even delete the directory it created and handed over.
+# Permissions rather than chown: the uid that owns these files is not necessarily
+# mapped into the builder's user namespace, so chown is not portable here.
+chmod -R a+rwX "$out"
 """
 
 
@@ -493,7 +498,9 @@ class WheelFactory:
         platform = PLATFORMS[target.platform]
         assert platform.wheel_tag_platform is not None  # buildable platforms carry a tag
         self._config.state.build_tmp.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=self._config.state.build_tmp) as out:
+        # A leftover temporary directory is untidy; failing a whole sync over one
+        # would be worse, and the build itself has already succeeded by then.
+        with tempfile.TemporaryDirectory(dir=self._config.state.build_tmp, ignore_cleanup_errors=True) as out:
             out_dir = Path(out)
             command = [
                 *self._engine_command(),

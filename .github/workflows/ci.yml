@@ -29,7 +29,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - run: uv sync --frozen --all-groups
@@ -56,7 +56,7 @@ jobs:
           - { os: windows-latest, python: "3.11" }
           - { os: windows-latest, python: "3.14" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv (Linux)
         if: runner.os == 'Linux'
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -83,13 +83,13 @@ jobs:
     # Python a server there might have.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: bin/check-offline-py39
 
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - run: uv run --frozen --group docs mkdocs build --strict
@@ -99,7 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build the mirror
         run: bin/gpygap sync --config .github/ci/gpygap.toml
       - name: Pack it
@@ -122,7 +122,7 @@ jobs:
       matrix:
         python: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           pattern: windows-wheels-*
@@ -206,7 +206,7 @@ jobs:
             setup: apk add --no-cache python3 curl ca-certificates
             python: python3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: ci-mirror
@@ -260,7 +260,7 @@ jobs:
       HTTP_PROXY: http://127.0.0.1:9
       HTTPS_PROXY: http://127.0.0.1:9
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}

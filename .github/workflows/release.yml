@@ -17,7 +17,7 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tag must match project.version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -39,7 +39,7 @@ jobs:
       contents: write   # create the release
       packages: write   # push the image to ghcr.io
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
