@@ -39,9 +39,15 @@ requirements_dir = "intake"
 sdists = "all"
 
 [targets]
-# CPython versions developers use.
+# CPython versions developers use. A "t" suffix is the free-threaded build, which is a
+# separate ABI rather than a newer version: "3.13t" is mirrored alongside "3.13", not
+# instead of it.
 python = ["3.10", "3.11", "3.12", "3.13", "3.14"]
-# Available: linux-x86_64, linux-aarch64, win-amd64, win-arm64, macos-arm64, macos-x86_64
+# Available: linux-x86_64, linux-aarch64, linux-musl-x86_64, linux-musl-aarch64,
+# win-amd64, win-arm64, macos-arm64, macos-x86_64. The musl entries are Alpine; a
+# manylinux wheel does not install there, so add one if anybody deploys on it.
+# Each platform multiplies the resolutions and, where upstream ships no wheel, the
+# builds -- `--plan-only` gives the size before you commit to one.
 platforms = ["linux-x86_64", "win-amd64"]
 
 [upstream]

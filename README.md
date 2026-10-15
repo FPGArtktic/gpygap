@@ -1,7 +1,7 @@
 # gpygap
 
 [![CI](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml/badge.svg)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
-[![Docs](https://readthedocs.org/projects/gpygap/badge/?version=latest)](https://gpygap.readthedocs.io/en/latest/)
+[![Docs](https://app.readthedocs.org/projects/gpygap/badge/?version=latest)](https://gpygap.readthedocs.io/en/latest/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?logo=gnu)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](pyproject.toml)
 
