@@ -316,6 +316,12 @@ normally. A run ending this way exits `1` and says so.
 The same mirror's 2936 projects were matched against OSV, and the 967 findings were
 written into the mirror itself, so they cross the air gap with the packages.
 
+One gap in the evidence above is the author's, not the tool's: no full-size run has ever
+been done with Windows as the online machine. The path is exercised on every push — CI
+builds a mirror natively on a Windows runner (`mirror-windows`) and has a Windows runner
+supply the wheels Linux cannot make (`wheels-windows`) — but nobody has pointed a Windows
+box at the top 1000 and waited four hours. I use Arch, btw.
+
 **What to take from this**
 
 - The architecture holds. A mirror built this way installs offline, from wheels only,
