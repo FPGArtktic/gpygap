@@ -42,14 +42,14 @@ jobs:
         # a minute rather than failing an hour in with a confusing ENOSPC.
         run: |
           bin/gpygap sync --config .github/ci/gpygap-monthly.toml --plan-only \
-            | tee "$RUNNER_TEMP/plan.log"
+            2>&1 | tee "$RUNNER_TEMP/plan.log"
           planned=$(grep -oE 'mirror would hold [0-9]+ files \(([0-9.]+) [KMG]B\)' "$RUNNER_TEMP/plan.log" | tail -1)
           free=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
           echo "planned: $planned | free: ${free}G"
           echo "- $planned, ${free} GB free" >> "$GITHUB_STEP_SUMMARY"
 
       - name: The whole top list
-        run: bin/gpygap sync --config .github/ci/gpygap-monthly.toml | tee "$RUNNER_TEMP/sync.log"
+        run: bin/gpygap sync --config .github/ci/gpygap-monthly.toml 2>&1 | tee "$RUNNER_TEMP/sync.log"
 
       - name: What it found
         if: always()

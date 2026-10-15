@@ -200,7 +200,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build 50 projects across three platforms
-        run: bin/gpygap sync --config .github/ci/gpygap-scale.toml | tee "$RUNNER_TEMP/scale.log"
+        run: bin/gpygap sync --config .github/ci/gpygap-scale.toml 2>&1 | tee "$RUNNER_TEMP/scale.log"
       - name: It finished complete, and it built something
         run: |
           tr -d '\r' < "$RUNNER_TEMP/scale.log" | grep -E '^I (Built|Install checks|Build checks|Mirror is|Advisories)' || true
