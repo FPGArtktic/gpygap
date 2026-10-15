@@ -5,6 +5,7 @@ description = "Offline PyPI mirror of the most popular projects and their depend
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
+authors = [{ name = "Mateusz Okulanis" }]
 requires-python = ">=3.11"
 dependencies = [
     "packaging>=24.0",
@@ -24,6 +25,7 @@ gpygap = "gpygap.cli:main"
 dev = [
     "mypy>=1.11",
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "ruff>=0.6",
     "types-tqdm",
 ]
@@ -57,3 +59,22 @@ files = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing:skip-covered"
+
+[tool.coverage.run]
+source = ["gpygap"]
+branch = true
+omit = [
+    # Exercised end to end by bin/pypi-mirror sync and the CI consume jobs, not by
+    # the unit suite, which is forbidden from running subprocesses.
+    "*/gpygap/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
