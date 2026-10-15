@@ -178,6 +178,27 @@ two to three minutes. Every extra package in it earns its place:
 Without that last one the hand-back loop ran green while doing nothing, which is worse
 than not having it.
 
+## Scale
+
+The mirror the consume jobs install from is deliberately tiny, because that artifact is
+downloaded about twenty times and every megabyte is paid for twenty times over. Volume
+is bought separately, by `mirror-scale`: fifty projects instead of five, across glibc,
+musl and Windows on four Python versions, roughly 620 MB and a few minutes, and **never
+uploaded**. Nothing installs from it; it exists so that a resolver edge case, a build
+that times out, or an engine that is not there has somewhere to appear.
+
+It asserts three things, and the third is there because of a specific failure:
+
+1. the run ends with `Mirror is COMPLETE`;
+2. `built_wheels` is not empty — an engine that is quietly absent looks exactly like one
+   with nothing to do;
+3. `MIRROR-GAPS.json` contains no `no-engine` reason. A full top-1000 run once reported
+   1333 targets without a wheel and published an empty gap list, which tells a Windows
+   builder there is nothing to do. That is now a failed job rather than a surprise.
+
+The top 1000 is still not run here. It is 80 GB and over an hour, which belongs in a
+scheduled run rather than on every push — see the scale caveat below.
+
 ## Releases
 
 A tag `v*` runs `release.yml`: it refuses a tag whose version disagrees with
@@ -190,9 +211,10 @@ works.
 
 Worth knowing before trusting a green tick:
 
-- **Scale.** CI mirrors a handful of projects. The real thing is the top 1000, roughly
-  80 GB, several hours and hundreds of builds. Timeouts, memory and prune ratios behave
-  differently there.
+- **The top 1000.** `mirror-scale` runs fifty projects; the real thing is a thousand,
+  roughly 80 GB, over an hour and 1333 targets needing a wheel. Timeouts, memory and
+  prune ratios behave differently there, and so does anything that only breaks after an
+  hour of uptime.
 - **The Windows online machine, fully.** `mirror-windows` does drive gpygap natively on
   a Windows runner and installs from the result, so the mirror-assembly half is covered.
   What is not covered is that host also building Linux wheels: that needs Docker Desktop

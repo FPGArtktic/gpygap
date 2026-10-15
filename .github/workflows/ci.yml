@@ -188,6 +188,43 @@ jobs:
           path: ${{ runner.temp }}/ci-mirror.tar.gz
           retention-days: 1
 
+  mirror-scale:
+    # Ten times the projects of the mirror the consume jobs use, and never uploaded:
+    # the point is resolution volume and real builds, not another artifact to ship
+    # around the matrix twenty times. It asserts the two things that matter at this
+    # size -- that the run calls itself COMPLETE, and that the wheel builder actually
+    # ran, because an engine that is quietly not there looks a lot like one with
+    # nothing to do.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build 50 projects across three platforms
+        run: bin/gpygap sync --config .github/ci/gpygap-scale.toml | tee "$RUNNER_TEMP/scale.log"
+      - name: It finished complete, and it built something
+        run: |
+          tr -d '\r' < "$RUNNER_TEMP/scale.log" | grep -E '^I (Built|Install checks|Build checks|Mirror is|Advisories)' || true
+          if ! grep -q 'Mirror is COMPLETE' "$RUNNER_TEMP/scale.log"; then
+            echo "the run did not end complete" >&2; exit 1
+          fi
+          built=$(python3 -c "import json;print(len(json.load(open('scale-mirror/MIRROR-INFO.json')).get('built_wheels') or []))")
+          echo "wheels built here: $built"
+          if [ "$built" -eq 0 ]; then
+            echo "no wheels were built at this scale; the builder did nothing" >&2; exit 1
+          fi
+      - name: The gap list is not silently empty
+        # The failure this guards: an unreachable engine left MIRROR-GAPS.json empty
+        # while the run reported a thousand uncovered targets.
+        run: |
+          python3 - <<'EOF'
+          import json, pathlib, sys
+          gaps = json.loads(pathlib.Path("scale-mirror/MIRROR-GAPS.json").read_text())["gaps"]
+          reasons = {g["reason"] for g in gaps}
+          print(f"{len(gaps)} gaps, reasons: {sorted(reasons) or 'none'}")
+          if "no-engine" in reasons:
+              sys.exit("the container engine was not reachable; nothing was built")
+          EOF
+
   mirror-windows:
     # Can a Windows machine be the online side at all? Every other job drives gpygap
     # from Linux, so nothing else would notice a path separator, a drive letter or a

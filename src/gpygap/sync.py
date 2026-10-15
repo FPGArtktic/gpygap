@@ -303,6 +303,16 @@ def _build_wheels(config: Config, factory: WheelFactory, fetcher: Fetcher) -> Bu
     # what no container here can, and an adopted wheel means one less build to run.
     factory.ingest(fetcher.plan.build_sdists)
     summary = factory.run(fetcher.plan.build_sdists, hashes)
+    if summary.engine_unreachable:
+        # Loud, and in the report rather than only in the log: a run that was asked
+        # to build wheels and could not reach an engine produced a mirror that is
+        # wrong in a way nothing downstream can detect.
+        log.error(
+            "build.wheels is on but no container engine was reachable: %d targets were "
+            "left without a wheel that this run was supposed to build. The mirror is not "
+            "what the configuration asked for.",
+            len(summary.gaps),
+        )
     if summary.built or summary.gaps:
         log.info(
             "Built %d wheels (%d reused, %d builds run), %d targets left without one",

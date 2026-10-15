@@ -391,3 +391,20 @@ def test_an_explicit_mapping_wins_over_everything(tmp_path: Path) -> None:
     # Spelled either way: the prefix is configuration, the path comes from the host.
     assert factory.engine_path(PurePosixPath("/work/gpygap/packages")) == "C:\\gpygap\\gpygap\\packages"
     assert factory.engine_path(PureWindowsPath("/work/gpygap/packages")) == "C:\\gpygap\\gpygap\\packages"
+
+
+def test_an_unreachable_engine_still_publishes_every_gap(tmp_path: Path) -> None:
+    # The failure this pins cost a 75-minute run: the engine was unreachable, the
+    # summary said 1333 targets had no wheel, and MIRROR-GAPS.json was empty --
+    # which tells a Windows builder there is nothing to do.
+    config = config_at(tmp_path, '[build]\nengine = "definitely-not-installed"\n')
+    sdist = tmp_path / "gpygap" / "packages" / "a" / "a-1.tar.gz"
+    sdist.parent.mkdir(parents=True)
+    sdist.write_text("x", "utf-8")
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+
+    summary = factory.run({"packages/a/a-1.tar.gz": {LINUX, WINDOWS}}, {})
+
+    assert summary.engine_unreachable
+    assert {g.reason for g in summary.gaps} == {"no-engine"}
+    assert len(factory.gaps) == 2, "the gaps must reach MIRROR-GAPS.json, not just the summary"

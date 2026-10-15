@@ -139,6 +139,13 @@ class BuildSummary:
     gaps: list[BuildGap] = field(default_factory=list)
     cached: int = 0
     attempted: int = 0
+    engine_unreachable: bool = False
+    """``build.wheels`` is on and the engine could not be reached.
+
+    Distinct from "nothing needed building": the run did not do what it was asked
+    to, and every gap it reports is an artefact of that rather than a fact about
+    the packages.
+    """
 
     @property
     def unbuildable(self) -> list[BuildGap]:
@@ -405,8 +412,16 @@ class WheelFactory:
         if not jobs:
             return summary
         if not self._engine_available():
+            summary.engine_unreachable = True
             for sdist, targets in jobs:
-                summary.gaps += [BuildGap(sdist, t, "no-engine") for t in targets]
+                for target in targets:
+                    gap = BuildGap(sdist, target, "no-engine")
+                    summary.gaps.append(gap)
+                    # Recorded here as well, not only in the summary: `gaps` is what
+                    # reaches MIRROR-GAPS.json, and an empty file next to a run that
+                    # reported a thousand uncovered targets is the worst possible
+                    # combination -- it tells a Windows builder there is nothing to do.
+                    self._gaps[(sdist, target)] = gap
             return summary
 
         self._config.state.build_tmp.mkdir(parents=True, exist_ok=True)

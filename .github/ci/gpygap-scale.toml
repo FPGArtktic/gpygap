@@ -1,0 +1,46 @@
+# A bigger run, for the things only volume finds.
+#
+# The consume jobs install from the small mirror, because that artifact is
+# downloaded about twenty times and every megabyte is paid for twenty times over.
+# This one is never uploaded: it exists to resolve ten times as many projects, build
+# whatever among them ships no wheel, and say whether the result is COMPLETE.
+#
+# Roughly 620 MB and a few minutes. Not the top 1000 -- that is 80 GB and over an
+# hour, which belongs in a scheduled run, not on every push -- but enough that a
+# resolver edge case, a build that times out, or an engine that is not there has
+# somewhere to show up before an operator finds it.
+
+[mirror]
+output = "../../scale-mirror"
+state_dir = "../../scale-mirror-state"
+
+[packages]
+top = 50
+# Extras are where the gigabytes are (the ML stack and its CUDA libraries); the
+# small mirror does not have them either.
+extras = false
+extra = ["pip", "docopt", "pysendfile; sys_platform == 'linux'", "llist"]
+sdists = "needed"
+
+[targets]
+python = ["3.11", "3.12", "3.13", "3.14"]
+platforms = ["linux-x86_64", "linux-musl-x86_64", "win-amd64"]
+
+[sync]
+with_tools = false
+keep_runs = 1
+verify = true
+build_check = true
+heal_rounds = 2
+
+[build]
+wheels = true
+jobs = 4
+
+[security]
+advisories = true
+fail_on = "none"
+
+[performance]
+jobs = 8
+download_jobs = 16
