@@ -42,6 +42,11 @@ def main():
     python = "{}.{}".format(*sys.version_info[:2])
 
     sdists = wanted(mirror, python)
+    # A note always lands, even when there is nothing to build: the job that folds
+    # these wheels back in looks for an artifact, and "no artifact" and "an empty
+    # artifact" are not the same thing to it.
+    note = out / "BUILT-ON-WINDOWS.txt"
+    note.write_text("python {}\nrequested: {}\n".format(python, len(sdists)), "utf-8")
     if not sdists:
         print("no win-* gaps for python {}: the mirror is already covered".format(python))
         return 0
