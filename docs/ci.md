@@ -19,10 +19,10 @@ flowchart TD
         O["offline-py39<br/>offline.py on the oldest Python"]
         D["docs<br/>mkdocs --strict + render all diagrams"]
     end
-    M["mirror<br/>build a real mirror from .github/ci/gpygap.toml"]
+    M["mirror · ubuntu-latest<br/>build a real mirror from .github/ci/gpygap.toml"]
     M --> CA["consume-after-linux<br/>7 distributions + Windows x2"]
-    M --> W["wheels-windows<br/>build the win-amd64 gaps"]
-    W --> MM["mirror-merge<br/>adopt them, index them"]
+    M --> W["wheels-windows · windows-latest<br/>pip wheel for each win-amd64 gap"]
+    W --> MM["mirror-merge · ubuntu-latest<br/>rebuild, adopting those wheels"]
     MM --> CB["consume-after-windows<br/>the same 9 jobs again, from scratch"]
 ```
 
@@ -51,14 +51,14 @@ Coverage is collected on every leg and written into the GitHub job summary.
 and renders it with the real Mermaid renderer. This check exists because exactly that
 happened once.
 
-## Two mirrors, not one
+## Two rounds, one mirror
 
 ```mermaid
 sequenceDiagram
-    participant Lin as mirror (Linux)
-    participant Win as wheels-windows
-    participant Merge as mirror-merge
-    participant All as consume (9 jobs)
+    participant Lin as mirror · ubuntu
+    participant Win as wheels-windows · windows
+    participant Merge as mirror-merge · ubuntu
+    participant All as consume · 7 distros + windows
 
     Lin->>Lin: resolve, download, build manylinux + musllinux wheels
     Lin->>Lin: publish MIRROR-GAPS.json — what it could not build
@@ -70,13 +70,29 @@ sequenceDiagram
     Merge-->>All: round two: install from this, from scratch
 ```
 
+**The mirror is assembled on Linux both times.** `mirror` and `mirror-merge` are both
+`ubuntu-latest` jobs running the same `gpygap sync` against the same configuration. The
+Windows runner never builds a mirror: it has no configuration, no state directory, no
+index and no prune. It is a build service that is handed a list of sdists and hands back
+wheels, and the Linux side decides what to do with them. There is one mirror definition
+here, published twice, not a Linux mirror and a Windows mirror.
+
 Round one asks whether every system can install from what Linux alone could build. Round
-two asks the same question again after a Windows runner supplied what Linux cannot make —
-and expects *more* packages to install, not merely the same ones.
+two asks the same question again after Windows supplied what Linux cannot make — and
+expects *more* packages to install, not merely the same ones.
 
 This is not a CI curiosity. It is the shape a monthly cycle has in production: one run
 publishes what is missing, a Windows machine builds it, the next run folds it in. CI runs
 both halves back to back so the loop is exercised on every push.
+
+One difference from production worth naming: `mirror-merge` starts from nothing. A CI job
+gets a clean runner, so it re-resolves and re-downloads everything rather than updating
+the mirror round one produced — the logs say `0 reused, 17 builds run` for that reason.
+In production the second run is incremental against the mirror already on disk, and
+rebuilds only what changed.
+
+If you want the mirror itself assembled on Windows, that is a different arrangement and
+it is described in [online-on-windows.md](online-on-windows.md). CI does not test it.
 
 ## What a consume job actually does
 
