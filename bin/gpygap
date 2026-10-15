@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Mateusz Okulanis
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Run gpygap inside a container; all arguments go to gpygap.
+#
+# The project directory is mounted at the same path inside the container and
+# used as the working directory, so gpygap.toml and relative paths behave the
+# same inside and out. Directories outside the project (a USB drive for
+# --export-delta, a mirror on another disk) are mounted the same way when
+# listed in GPYGAP_MOUNTS, separated by colons:
+#
+#   GPYGAP_MOUNTS=/media/usb bin/gpygap sync --export-delta /media/usb/delta-2026-11
+#
+# GPYGAP_ENGINE=docker switches from podman to docker (CI runners have docker).
+set -euo pipefail
+
+project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+image=${GPYGAP_IMAGE:-localhost/gpygap:latest}
+engine=${GPYGAP_ENGINE:-podman}
+
+# Rebuilds only when the sources changed; otherwise served from the engine's cache.
+"$engine" build --quiet --file "$project_dir/Containerfile" --tag "$image" "$project_dir" >/dev/null
+
+mounts=(--volume "$project_dir:$project_dir")
+IFS=: read -r -a extra_dirs <<<"${GPYGAP_MOUNTS:-}"
+for dir in "${extra_dirs[@]}"; do
+    [[ -n $dir ]] || continue
+    mkdir -p "$dir"
+    mounts+=(--volume "$dir:$dir")
+done
+
+# Files created in the mounts must belong to the calling user. podman does that
+# with keep-id; docker needs the uid passed explicitly.
+# label=disable: no SELinux relabelling of a mirror with tens of thousands of files.
+engine_opts=()
+if [[ $engine == *podman* ]]; then
+    engine_opts+=(--userns=keep-id --security-opt label=disable)
+else
+    engine_opts+=(--user "$(id -u):$(id -g)")
+fi
+
+tty=()
+[[ -t 0 && -t 1 ]] && tty=(--tty)
+
+exec "$engine" run --rm --interactive "${tty[@]}" \
+    "${engine_opts[@]}" \
+    "${mounts[@]}" \
+    --workdir "$project_dir" \
+    "$image" "$@"

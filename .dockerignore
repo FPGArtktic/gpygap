@@ -1,0 +1,9 @@
+# Keep the build context small: never send the mirror or its state.
+# Named .dockerignore, not .containerignore, so docker reads it too (podman reads both).
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+**/__pycache__

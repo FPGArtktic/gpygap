@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Mateusz Okulanis
+# SPDX-License-Identifier: GPL-3.0-or-later
+# offline.py runs on the air-gapped server as gpygap_offline.py and must work
+# on Python 3.9. Linters cannot prove that (they miss newer stdlib APIs), so
+# run it there. GPYGAP_ENGINE=docker switches from podman to docker.
+set -euo pipefail
+project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+engine=${GPYGAP_ENGINE:-podman}
+
+engine_opts=()
+[[ $engine == *podman* ]] && engine_opts+=(--security-opt label=disable)
+
+exec "$engine" run --rm --network none "${engine_opts[@]}" \
+    --volume "$project_dir:/project:ro" \
+    docker.io/library/python:3.9-slim \
+    python -I /project/tests/offline_py39_check.py /project/src/gpygap/offline.py
