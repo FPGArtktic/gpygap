@@ -289,12 +289,32 @@ and 13, Ubuntu 24.04 and 26.04, RHEL 9, Arch, Alpine (musl) — and on Windows w
 whole matrix runs twice: once on what Linux alone could build, then again after a Windows
 runner has supplied the wheels Linux cannot make.
 
-At full size the builder carries more weight. A top-1000 run compiles **145 wheels
-upstream never published**, out of 404 attempts across platforms and Python versions, and
-writes what it could not build into `MIRROR-GAPS.json` with a reason — so the gap is read
-on the online side instead of discovered behind the air gap. Separately, an advisory scan
-of the full mirror matched 2936 projects against OSV and wrote 967 findings into the
-mirror itself, so they travel with the packages.
+At full size the builder carries more weight, and two top-1000 runs hours apart gave an
+accidental control for it: same machine, same scope, the first with its container engine
+misconfigured and so building nothing, the second building 145 wheels from 404 attempts.
+
+| Top 1000 — 2936 projects, 81.6 GB, 37 140 install checks | No builder | 145 wheels built |
+| --- | --- | --- |
+| Installs from wheels alone | 35 277 | **36 256** |
+| Needs a source build | 1 605 | **628** |
+| Unsupported upstream too | 180 | 176 |
+| Mirror cannot satisfy it | 78 | 80 |
+
+145 wheels removed 977 compilations from developers' machines. What remains splits in two,
+and `MIRROR-GAPS.json` says which is which: 309 Windows targets a Linux host cannot build,
+which a Windows machine fills as the matrix above shows, and 259 genuine build failures
+across 54 projects, led by thinc, spacy, gssapi and krb5. The second kind is a gap to
+close rather than a fact of life — `build.images` points a platform at an image carrying
+the missing `-devel` packages.
+
+The 80 it cannot satisfy at all are not 80 packages but eight extras: `spacy[apple]`, five
+CUDA extras of spacy and thinc, `trino[gssapi]` and `datasets[benchmarks]`. Each survives
+only in releases from around 2020 that no longer build on a current Python, so the
+resolver reaches them and then cannot use them; `spacy[cuda113]` and later install
+normally. A run ending this way exits `1` and says so.
+
+The same mirror's 2936 projects were matched against OSV, and the 967 findings were
+written into the mirror itself, so they cross the air gap with the packages.
 
 What it still cannot do: [Limitations](#limitations).
 
