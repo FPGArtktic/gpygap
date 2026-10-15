@@ -106,16 +106,24 @@ it is described in [online-on-windows.md](online-on-windows.md). CI does not tes
 Each of the nine consume jobs installs from the mirror the way a developer would, and
 every part of how it does that is load-bearing.
 
+The Linux shape, which is seven of the nine jobs:
+
 ```mermaid
-flowchart LR
-    A["docker build<br/>distribution + python + venv + uv"] --> B["docker run --network none"]
-    B --> C["gpygap_offline.py verify<br/>every file against MIRROR-SHA256SUMS"]
+flowchart TD
+    A["docker build<br/>distribution + python + venv + uv"] --> P{"reach pypi.org<br/>with --network none"}
+    P -->|"it answered"| X["job fails:<br/>nothing below would prove anything"]
+    P -->|"refused"| C["gpygap_offline.py verify<br/>every file against MIRROR-SHA256SUMS"]
     C --> D["pip install --upgrade pip<br/>from the mirror, offline"]
     D --> E["consume.py replays MIRROR-VERIFIED.json<br/>with pip AND uv, --only-binary :all:"]
     E --> F{"anything fell back<br/>to a source build?"}
     F -->|yes| G["job fails"]
     F -->|no| H["job passes"]
 ```
+
+The two Windows jobs do the same thing without a container: an outbound firewall rule on
+`python.exe` and `uv.exe` stands in for `--network none`, the same control proves it
+worked, and the second round additionally installs and imports a wheel only a Windows
+runner could have produced.
 
 - **The network is cut, and the cut is proven.** Linux containers run with
   `--network none`. Windows has no such flag, so the runner gets an outbound firewall
@@ -157,8 +165,8 @@ checked against musl instead of silently demanding glibc wheels on a musl system
 ## The CI mirror is small on purpose
 
 `.github/ci/gpygap.toml` mirrors the top 5 projects plus four named ones, for Python
-3.11–3.14 on glibc, musl and Windows. It is about 140 MB and a minute, and every extra
-package in it earns its place:
+3.11–3.14 on glibc, musl and Windows. It is about 180 MB, and the `mirror` job takes
+two to three minutes. Every extra package in it earns its place:
 
 | Package | Why it is there |
 | --- | --- |
