@@ -1,0 +1,180 @@
+# SPDX-FileCopyrightText: 2026 Mateusz Okulanis
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Install from a finished mirror the way an air-gapped developer would, on every
+# system the mirror claims to serve. Called twice by CI: once against the mirror
+# Linux built on its own, and once again from scratch against the mirror after a
+# Windows runner filled in what Linux could not build. The same packages have to
+# install both times, and more of them the second time.
+name: Consume
+
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: Name of the uploaded mirror tarball to install from.
+        required: true
+        type: string
+      phase:
+        description: What this round is proving, for the job titles.
+        required: true
+        type: string
+      expect-windows-built:
+        description: Require a package that only a Windows builder could have supplied.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: ${{ inputs.phase }} — ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 12 is oldstable and ships pip 23.0.1, which is the version the PEP 658
+          # metadata bug bites; keeping it keeps the offline pip bootstrap honest.
+          - name: debian-12
+            platform: linux-x86_64
+            image: debian:12
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          - name: debian-13
+            platform: linux-x86_64
+            image: debian:13
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          - name: ubuntu-24.04
+            platform: linux-x86_64
+            image: ubuntu:24.04
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          - name: ubuntu-26.04
+            platform: linux-x86_64
+            image: ubuntu:26.04
+            setup: apt-get update && apt-get install -y --no-install-recommends python3 python3-venv curl ca-certificates
+            python: python3
+          # UBI already carries curl-minimal; asking dnf for curl is a conflict.
+          - name: rhel-9
+            platform: linux-x86_64
+            image: registry.access.redhat.com/ubi9/ubi
+            setup: dnf -y install python3.12 && dnf clean all
+            python: python3.12
+          - name: arch
+            platform: linux-x86_64
+            image: archlinux:latest
+            setup: pacman -Sy --noconfirm python curl
+            python: python3
+          # musl, not glibc: a manylinux wheel does not install here.
+          - name: alpine
+            platform: linux-musl-x86_64
+            image: alpine:3.20
+            setup: apk add --no-cache python3 curl ca-certificates
+            python: python3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}
+      - name: Unpack the mirror
+        run: mkdir -p "$RUNNER_TEMP/mirror" && tar -xzf "$RUNNER_TEMP/ci-mirror.tar.gz" -C "$RUNNER_TEMP/mirror"
+      - name: Build the ${{ matrix.name }} image
+        # Empty build context: only these four lines reach the daemon. A virtualenv
+        # sidesteps PEP 668, which Debian and Arch enforce.
+        run: |
+          printf '%s\n' \
+            'FROM ${{ matrix.image }}' \
+            'RUN ${{ matrix.setup }}' \
+            'RUN ${{ matrix.python }} -m venv /venv' \
+            'RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh' \
+            | docker build -t gpygap-consume:${{ matrix.name }} -
+      - name: Verify every checksum, offline
+        run: |
+          docker run --rm --network none \
+            -v "$RUNNER_TEMP/mirror:/mirror:ro" \
+            gpygap-consume:${{ matrix.name }} \
+            /venv/bin/python -I /mirror/gpygap_offline.py verify /mirror
+      - name: Install from wheels alone, offline
+        # pip is upgraded from the mirror first, offline. Debian 12 ships pip
+        # 23.0.1, which rejects a wheel whose metadata name normalizes differently
+        # once it reads the PEP 658 sidecar this index serves; fixed in 23.1. It is
+        # both the documented remedy and a proof the mirror bootstraps its own
+        # tooling with the network off.
+        run: |
+          docker run --rm --network none \
+            -v "$RUNNER_TEMP/mirror:/mirror:ro" \
+            -v "$PWD/.github/ci/consume.py:/consume.py:ro" \
+            gpygap-consume:${{ matrix.name }} \
+            sh -c '/venv/bin/python -m pip install --quiet --no-cache-dir \
+                     --disable-pip-version-check --index-url file:///mirror/simple \
+                     --upgrade pip &&
+                   /venv/bin/python -m pip --version &&
+                   /venv/bin/python -I /consume.py /mirror ${{ matrix.platform }} pip,uv'
+
+  windows:
+    name: ${{ inputs.phase }} — windows py${{ matrix.python }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}
+      - name: Unpack the mirror
+        # git-bash tar reads D:\... as a remote host and tries to resolve it; the
+        # tar that ships with Windows does not.
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\mirror" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\ci-mirror.tar.gz" -C "$env:RUNNER_TEMP\mirror"
+      - name: Install uv
+        run: irm https://astral.sh/uv/install.ps1 | iex
+        shell: powershell
+      - name: Verify every checksum
+        shell: bash
+        env:
+          # There is no --network none on a native runner, so any accidental
+          # outbound request goes to a closed port instead of quietly succeeding
+          # against PyPI. Scoped to the steps that must be offline: checkout,
+          # setup-python and the uv installer all need GitHub.
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
+        run: python -I "$RUNNER_TEMP/mirror/gpygap_offline.py" verify "$RUNNER_TEMP/mirror"
+      - name: Install from wheels alone, with pip and uv
+        shell: bash
+        env:
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
+        run: python -I .github/ci/consume.py "$RUNNER_TEMP/mirror" win-amd64 pip,uv
+      - name: A wheel only Windows could have built
+        # The point of the second round. llist is a C extension with no wheels on
+        # PyPI: Linux builds it for Linux and that does nothing for win-amd64, so
+        # until a Windows runner builds it and the next sync adopts it, this
+        # install has no wheel to find. Failing here means the hand-back loop is
+        # broken, which is exactly the thing that would otherwise go unnoticed.
+        if: inputs.expect-windows-built
+        shell: bash
+        env:
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: ""
+        run: |
+          index=$(python -c "from pathlib import Path; import os; print(Path(os.environ['RUNNER_TEMP'], 'mirror', 'simple').as_uri())")
+          target="$RUNNER_TEMP/llist-check"
+          python -m pip install --only-binary :all: --no-cache-dir \
+            --disable-pip-version-check --index-url "$index" --target "$target" llist
+          PYTHONPATH="$target" python -c "import llist; print('imported', llist.__file__)"

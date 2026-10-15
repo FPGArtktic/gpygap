@@ -21,6 +21,12 @@ extra = [
     # through pip wheel plus auditwheel in a manylinux container.
     "docopt",
     "pysendfile; sys_platform == 'linux'",
+    # A C extension with no wheels and no external dependencies, which is the only
+    # shape that makes the Windows builder do real work: Linux can build it for
+    # Linux, and the result is a platform wheel that does nothing for win-amd64.
+    # So win-amd64 stays a gap until the Windows runner closes it, and the whole
+    # publish-gaps / build-elsewhere / adopt loop is exercised rather than assumed.
+    "llist",
 ]
 # Extras multiply the resolution count and pull in the ML stack; not what CI tests.
 extras = false
