@@ -16,3 +16,12 @@ site/
 # CI end-to-end run output
 /ci-mirror/
 /ci-mirror-state/
+
+# Wheels handed back by a Windows builder
+/ci-windows-wheels/
+
+# Coverage data
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

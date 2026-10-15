@@ -12,7 +12,15 @@
 #   GPYGAP_MOUNTS=/media/usb bin/gpygap sync --export-delta /media/usb/delta-2026-11
 #
 # GPYGAP_ENGINE=docker switches from podman to docker (CI runners have docker).
-set -euo pipefail
+#
+# A sync also builds the wheels upstream never published, each in its own
+# sibling container, so the container needs to reach the engine. podman gets a
+# transient API service that lives exactly as long as this script; docker
+# already has a socket. Either way the container gets a socket and nothing
+# else: it can start builder containers, which is what wheel building is.
+# GPYGAP_NO_BUILD_SOCKET=1 withholds it, and gpygap then reports every target
+# without an upstream wheel as a gap instead of filling it.
+set -uo pipefail
 
 project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 image=${GPYGAP_IMAGE:-localhost/gpygap:latest}
@@ -42,8 +50,51 @@ fi
 tty=()
 [[ -t 0 && -t 1 ]] && tty=(--tty)
 
-exec "$engine" run --rm --interactive "${tty[@]}" \
+socket_in_container=/run/gpygap-engine.sock
+socket_env=()
+service_pid=
+socket_dir=
+cleanup() {
+    [[ -n $service_pid ]] && kill "$service_pid" 2>/dev/null
+    [[ -n $socket_dir ]] && rm -rf "$socket_dir"
+    return 0
+}
+
+if [[ ${1:-} == sync && -z ${GPYGAP_NO_BUILD_SOCKET:-} ]]; then
+    if [[ $engine == *podman* ]]; then
+        socket_dir=$(mktemp -d)
+        trap cleanup EXIT
+        "$engine" system service --time=0 "unix://$socket_dir/podman.sock" &
+        service_pid=$!
+        for _ in $(seq 100); do
+            [[ -S "$socket_dir/podman.sock" ]] && break
+            sleep 0.1
+        done
+        if [[ -S "$socket_dir/podman.sock" ]]; then
+            mounts+=(--volume "$socket_dir/podman.sock:$socket_in_container")
+            # podman must be driven by its own client: a container created through
+            # its Docker-compatible API comes up unable to fork.
+            socket_env=(--env "CONTAINER_HOST=unix://$socket_in_container")
+        else
+            echo "gpygap: podman API service did not start; wheels will not be built" >&2
+        fi
+    elif [[ -S /var/run/docker.sock ]]; then
+        mounts+=(--volume "/var/run/docker.sock:$socket_in_container")
+        socket_env=(--env "DOCKER_HOST=unix://$socket_in_container")
+        # The socket is group-owned; the container user must be in that group.
+        docker_gid=$(stat -c '%g' /var/run/docker.sock)
+        engine_opts+=(--group-add "$docker_gid")
+    fi
+fi
+
+# Not exec: that would replace this shell and the trap above would never run, so the
+# transient API service would outlive the run. One leaked service per sync adds up.
+"$engine" run --rm --interactive "${tty[@]}" \
     "${engine_opts[@]}" \
     "${mounts[@]}" \
+    "${socket_env[@]}" \
     --workdir "$project_dir" \
     "$image" "$@"
+status=$?
+cleanup
+exit $status
