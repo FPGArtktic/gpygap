@@ -316,6 +316,21 @@ normally. A run ending this way exits `1` and says so.
 The same mirror's 2936 projects were matched against OSV, and the 967 findings were
 written into the mirror itself, so they cross the air gap with the packages.
 
+**What to take from this**
+
+- The architecture holds. A mirror built this way installs offline, from wheels only,
+  on seven Linux distributions and on Windows, with both `pip` and `uv`, under
+  `--network none` — and CI re-proves it on every push with nothing left unsatisfiable.
+- Scope decides completeness, not the tool. At CI's size — 57 projects, no extras — a run
+  ends `COMPLETE`. At top 1000 with every extra it reaches 97.6% and exits `1`, because
+  the long tail of extras drags in 2020-era releases that no longer build anywhere.
+- Two steps close most of what a full-size run leaves, and neither is a code change: run
+  the Windows side so the 309 Windows targets get built, and point `build.images` at
+  images carrying the `-devel` packages the 259 failures are missing.
+- `packages.extras = false` removes most of the tail along with two thirds of the disk.
+  Mirroring what a team actually imports — `packages.txt` and `intake/` — beats mirroring
+  a thousand projects and their every optional feature.
+
 What it still cannot do: [Limitations](#limitations).
 
 ## Requirements (online side)
