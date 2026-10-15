@@ -12,12 +12,15 @@ from __future__ import annotations
 import os
 import re
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
-from gpygap.platforms import Platform, get_platforms
+from gpygap.platforms import PLATFORMS, Platform, get_platforms
+from gpygap.util import normalize_name
 
 DEFAULT_CONFIG_FILE = "gpygap.toml"
 DEFAULT_INDEX_URL = "https://pypi.org/simple"
@@ -75,6 +78,17 @@ _SCHEMA: dict[str, dict[str, Any]] = {
         "verify": True,
         "build_check": True,
         "heal_rounds": 2,
+    },
+    "build": {
+        "wheels": True,
+        "external_dir": None,
+        "engine": "auto",
+        "container_root": None,
+        "host_root": None,
+        "images": [],
+        "exclude": [],
+        "jobs": 2,
+        "timeout": 1800,
     },
     "performance": {
         "jobs": 8,
@@ -137,6 +151,14 @@ class StatePaths:
     def export_snapshot(self) -> Path:
         return self.root / "export-snapshot.json"
 
+    @property
+    def built_wheels(self) -> Path:
+        return self.root / "built-wheels.json"
+
+    @property
+    def build_tmp(self) -> Path:
+        return self.root / "build"
+
 
 @dataclass(frozen=True, slots=True)
 class Config:
@@ -165,6 +187,15 @@ class Config:
     verify: bool
     build_check: bool
     heal_rounds: int
+    build_wheels: bool
+    build_external_dir: Path | None
+    build_engine: str
+    build_container_root: str | None
+    build_host_root: str | None
+    build_images: Mapping[str, str]
+    build_exclude: frozenset[str]
+    build_jobs: int
+    wheel_build_timeout: int
     jobs: int
     download_jobs: int
     retries: int
@@ -231,11 +262,12 @@ def _check_type(name: str, value: Any, default: Any) -> None:
 
 
 def _build(v: dict[str, dict[str, Any]], base_dir: Path) -> Config:
-    mirror, packages, targets, sync, perf = (
+    mirror, packages, targets, sync, build, perf = (
         v["mirror"],
         v["packages"],
         v["targets"],
         v["sync"],
+        v["build"],
         v["performance"],
     )
     output = (base_dir / mirror["output"]).resolve()
@@ -269,6 +301,15 @@ def _build(v: dict[str, dict[str, Any]], base_dir: Path) -> Config:
         verify=sync["verify"],
         build_check=sync["build_check"],
         heal_rounds=sync["heal_rounds"],
+        build_wheels=build["wheels"],
+        build_external_dir=_optional_path(base_dir, build["external_dir"]),
+        build_engine=build["engine"],
+        build_container_root=build["container_root"],
+        build_host_root=build["host_root"],
+        build_images=_build_images(build["images"]),
+        build_exclude=frozenset(normalize_name(p) for p in build["exclude"]),
+        build_jobs=build["jobs"],
+        wheel_build_timeout=build["timeout"],
         jobs=perf["jobs"],
         download_jobs=perf["download_jobs"],
         retries=perf["retries"],
@@ -278,6 +319,23 @@ def _build(v: dict[str, dict[str, Any]], base_dir: Path) -> Config:
     )
     _validate(config)
     return config
+
+
+def _build_images(entries: list[str]) -> Mapping[str, str]:
+    """Parse ``build.images`` overrides, each ``platform-key=image``.
+
+    Defaults live on the platforms themselves; this only exists so an operator can
+    point a target at a mirrored or newer builder image without editing the code.
+    """
+    images: dict[str, str] = {}
+    for entry in entries:
+        key, separator, image = entry.partition("=")
+        if not separator or not key.strip() or not image.strip():
+            raise ConfigError(f"build.images: {entry!r} is not 'platform-key=image'")
+        if key.strip() not in PLATFORMS:
+            raise ConfigError(f"build.images: unknown platform {key.strip()!r}")
+        images[key.strip()] = image.strip()
+    return MappingProxyType(images)
 
 
 def _optional_path(base_dir: Path, value: str | None) -> Path | None:
@@ -307,10 +365,19 @@ def _validate(config: Config) -> None:
         (config.build_deps_rounds >= 0, "sync.build_deps_rounds must be >= 0"),
         (config.heal_rounds >= 0, "sync.heal_rounds must be >= 0"),
         (min(config.jobs, config.download_jobs, config.retries) >= 1, "performance values must be >= 1"),
+        (config.build_jobs >= 1, "build.jobs must be >= 1"),
+        (config.wheel_build_timeout >= 1, "build.timeout must be >= 1"),
+        (
+            bool(config.build_container_root) == bool(config.build_host_root),
+            "build.container_root and build.host_root must be set together",
+        ),
     ]
     for ok, message in checks:
         if not ok:
             raise ConfigError(message)
     for version in config.python_versions:
-        if not re.fullmatch(r"3\.\d+", version):
-            raise ConfigError(f"targets.python: {version!r} is not a 'major.minor' version like '3.12'")
+        if not re.fullmatch(r"3\.\d+t?", version):
+            raise ConfigError(
+                f"targets.python: {version!r} is not a 'major.minor' version like '3.12', "
+                "optionally with a 't' suffix for a free-threaded build like '3.13t'"
+            )
