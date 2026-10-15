@@ -5,6 +5,16 @@
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?logo=gnu)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](pyproject.toml)
 
+Each way of running it is exercised on every push, and the badge says how far:
+
+[![Setup A](https://img.shields.io/badge/A%20·%20Linux%20host-verified%20in%20CI-2ea043?logo=linux&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
+[![Setup B](https://img.shields.io/badge/B%20·%20Linux%20%2B%20Windows%20builder-verified%20in%20CI-2ea043?logo=windowsterminal&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
+[![Setup C](https://img.shields.io/badge/C%20·%20Windows%20host-mirror%20%26%20win%20wheels%20in%20CI-bf8700?logo=windows&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
+
+A and B are covered end to end. C builds the mirror and its Windows wheels on a Windows
+runner and installs from the result offline; the WSL2 half, where that host also compiles
+the Linux wheels, needs a self-hosted runner and is checked by hand.
+
 Installing from the mirror is tested on every push, offline, from a real container of each
 system &mdash; not asserted:
 
@@ -38,30 +48,139 @@ PyPI.
 
 ## Quickstart
 
-### 1. Build the mirror (online machine)
+First decide **where the online machine runs**, because that is the only choice that
+changes anything. Steps 2 to 5 are the same whichever you pick.
 
-You need Linux with [podman](https://podman.io/); rootless is fine. uv, Python and all
-builds live in the container.
+| | **A. Linux** | **B. Linux + Windows builder** | **C. Windows** |
+| --- | --- | --- | --- |
+| Machines | 1 | 2 | 1 |
+| manylinux / musllinux wheels | built | built | built, through WSL2 |
+| `win_amd64` wheels | **not built** | built on machine 2 | built on the same machine |
+| `py3-none-any` wheels | built, and they serve Windows too | built | built |
+| One command per run | yes | no, two phases | yes |
+| Tested by CI | fully | fully | the mirror half |
+
+Most of the top 1000 publish Windows wheels, and the pure-Python packages that publish
+none are covered anyway — their `py3-none-any` wheel is built on Linux and installs
+everywhere. **A** is therefore enough for many teams; what it cannot cover is listed by
+name in `MIRROR-GAPS.json` after every run, so you can decide with the list in hand
+rather than in advance.
+
+### 1A. Build the mirror on Linux
+
+Linux with [podman](https://podman.io/); rootless is fine. uv, Python and every build
+live in containers.
 
 ```bash
-git clone <this repository> gpygap && cd gpygap
-
-# Optional: list your own packages, one per line (see the file's header).
-$EDITOR packages.txt
-
-bin/gpygap sync --top 10       # smoke run: ~1 GB, ~5 minutes
-bin/gpygap sync --plan-only    # size of the full mirror; downloads nothing
+git clone https://github.com/FPGArtktic/gpygap && cd gpygap
+$EDITOR packages.txt              # optional: your own packages, one per line
 ```
 
-When the test run ends with `Mirror is COMPLETE`, build the real thing and export it to
-the transfer medium:
+```toml
+# gpygap.toml — the parts worth setting; every key is documented in the file
+[packages]
+top = 1000
+extras = true
+
+[targets]
+python = ["3.11", "3.12", "3.13"]
+platforms = ["linux-x86_64", "win-amd64"]
+
+[build]
+wheels = true                     # build what upstream did not publish
+```
 
 ```bash
-rm -rf gpygap gpygap-state    # drop the test run
+bin/gpygap sync --plan-only       # sizes; downloads nothing
+bin/gpygap sync --top 10          # smoke run, ~1 GB, ~5 minutes
+```
+
+When the smoke run ends with `Mirror is COMPLETE`, build the real thing and export it:
+
+```bash
+rm -rf gpygap gpygap-state        # drop the test run
 GPYGAP_MOUNTS=/media/usb bin/gpygap sync --export-delta /media/usb/delta-2026-10
 ```
 
-The first export contains the whole mirror; later ones contain only changes.
+!!! note
+    `GPYGAP_STORAGE=/srv/gpygap-containers` keeps the container images on the same disk
+    as the mirror instead of under `$HOME`. Worth setting when the system disk is
+    smaller than the mirror.
+
+### 1B. Linux, with a Windows machine filling the gaps
+
+Everything from 1A, plus one directory and one second machine. On the Linux side:
+
+```toml
+# gpygap.toml
+[build]
+wheels = true
+external_dir = "/srv/incoming-wheels"   # wheels built elsewhere are adopted from here
+```
+
+After a run reports gaps, on any Windows machine with the MSVC Build Tools — it needs no
+gpygap and no configuration, only a copy of the mirror and one script from this
+repository:
+
+```powershell
+py -3.12 .\.github\ci\build-windows-wheels.py D:\mirror D:\wheels
+py -3.13 .\.github\ci\build-windows-wheels.py D:\mirror D:\wheels
+```
+
+It reads `MIRROR-GAPS.json`, builds exactly what is listed, and writes the wheels to
+`D:\wheels`. Copy them to `/srv/incoming-wheels`; the next `bin/gpygap sync` adopts them,
+indexes them and verifies them. Run it once per Python version in `targets.python`; a
+pure-Python package needs only one run, because its wheel covers them all.
+
+### 1C. Build the mirror on Windows
+
+The only single machine that compiles for everything, because it has both toolchains.
+
+```powershell
+# Python from python.org, then:
+irm https://astral.sh/uv/install.ps1 | iex
+
+# MSVC Build Tools: the "Desktop development with C++" workload.
+
+# WSL2 with a distribution and a container engine, for the Linux wheels:
+wsl --install -d Ubuntu
+wsl -d Ubuntu -- sudo apt-get update
+wsl -d Ubuntu -- sudo apt-get install -y podman
+
+git clone https://github.com/FPGArtktic/gpygap
+cd gpygap
+uv sync
+```
+
+```toml
+# gpygap.toml
+[targets]
+python = ["3.11", "3.12", "3.13"]
+platforms = ["linux-x86_64", "linux-musl-x86_64", "win-amd64"]
+
+[build]
+wheels = true
+# One engine as far as you are concerned, four words as far as argv is concerned.
+# Because it starts with wsl, paths are translated the way WSL sees them:
+# C:\gpygap\mirror becomes /mnt/c/gpygap/mirror.
+engine = "wsl -d Ubuntu podman"
+```
+
+```powershell
+uv run gpygap sync --plan-only
+uv run gpygap sync
+```
+
+One command. Windows wheels are compiled in process under MSVC; Linux wheels in podman
+inside WSL2, in containers with no network, exactly as on a Linux host.
+
+**The one thing to know before choosing C:** the Windows wheels are built outside a
+container, because no container provides MSVC. It is the same exposure a developer takes
+when pip builds from source on their machine — which mirroring the wheel exists to avoid
+— but if every build must be contained in your environment, use A or B.
+
+Full detail on all three, including what CI does and does not cover:
+[docs/setups.md](docs/setups.md).
 
 ### 2. Install it on the offline server
 
@@ -152,57 +271,6 @@ Each requirement is resolved **on its own**, so version conflicts between projec
 different `pydantic` or `click` requirements) never block anything: the mirror simply holds
 several versions. Details: [docs/architecture.md](docs/architecture.md),
 [docs/verification.md](docs/verification.md).
-
-## Where to run it
-
-One machine needs internet access. Which operating system it runs decides one thing:
-**which wheels it can compile for the packages that publish none.** Everything else is
-identical.
-
-| | A. Linux | B. Linux + Windows builder | C. Windows |
-| --- | --- | --- | --- |
-| Machines | 1 | 2 | 1 |
-| manylinux / musllinux wheels | built | built | built, through WSL2 |
-| `win_amd64` wheels | **not built** | built on the second machine | built on the same machine |
-| `py3-none-any` wheels | built, and they cover Windows too | built | built |
-| One command per run | yes | no, two phases | yes |
-
-**A** is the default and what the Quickstart above describes. Most of the top 1000
-publish Windows wheels, and the pure-Python packages that publish none are covered
-anyway, because their `py3-none-any` wheel is built on Linux and installs everywhere.
-What is left is listed by name in `MIRROR-GAPS.json`.
-
-**B** adds a Windows machine that fills those gaps. It needs the MSVC Build Tools, a copy
-of the mirror and nothing else — no gpygap, no configuration:
-
-```powershell
-python .\build-windows-wheels.py D:\mirror D:\wheels   # once per Python version
-```
-
-Copy the result to wherever `build.external_dir` points on the Linux machine; the next
-sync adopts it.
-
-**C** is the only single machine that can compile for everything, because it has both
-toolchains: MSVC for Windows and, through WSL2, Linux containers for the rest.
-
-```powershell
-wsl --install -d Ubuntu
-wsl -d Ubuntu -- sudo apt-get install -y podman
-uv sync
-uv run gpygap sync
-```
-
-```toml
-# gpygap.toml
-[build]
-wheels = true
-engine = "wsl -d Ubuntu podman"   # one engine; paths are translated for WSL
-```
-
-None of them builds macOS wheels. The toolchain only runs on macOS.
-
-Full instructions for each, including what CI does and does not cover:
-[docs/setups.md](docs/setups.md).
 
 ## Requirements (online side)
 

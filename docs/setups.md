@@ -18,7 +18,7 @@ file, the same mirror layout, the same deltas.
 | `py3-none-any` wheels | built, and they cover Windows too | built | built |
 | macOS wheels | never | never | never |
 | One command per run | yes | no — two phases | yes |
-| Tested by CI | fully | fully | the mirror half |
+| Tested by CI | fully | fully | mirror and Windows wheels; not the WSL2 half |
 
 **Pick A** if your Windows developers either install VS Build Tools or only ever need
 packages that publish Windows wheels. Most of the top 1000 do, and the pure-Python
