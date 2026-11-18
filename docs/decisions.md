@@ -97,6 +97,18 @@ from teams and mirrors every locked version exactly, without re-resolving, so a 
 that works online installs offline unchanged. Keeping them apart keeps the curated list
 readable and makes it obvious which entries can be dropped when a team leaves.
 
+## Scanning a directory is a command, not a step of `sync`
+
+Working out what an unpackaged project needs is guesswork refined by a human, and the two
+halves belong on different schedules: the scan happens once, when a team hands over a
+directory, and the mirror is built every month. Making it a `sync` step would also mean a
+mirror run reads other people's source trees on every run, and that a guess could enter the
+scope with nobody having looked at it. So `gpygap scan` writes a reviewable requirements file
+into `intake/` and stops there, which also keeps the command-line/configuration split
+("run options on the command line") intact: the scan changes nothing the mirror remembers.
+To revisit: if a site ends up scanning dozens of trees on a schedule, the loop belongs in
+their cron, not in `sync`.
+
 ## Wheels are built here, not on the developer machine
 
 A package with no wheel for a target used to be shipped as an sdist and compiled at

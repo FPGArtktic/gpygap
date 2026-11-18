@@ -47,7 +47,7 @@ Dependencies point downwards; nothing imports `sync` or `cli`.
 | --- | --- |
 | entry | `cli` (argparse) → `sync` (orchestration) |
 | phases | `fetcher`, `wheelbuild`, `verify`, `prune`, `index`, `checksums`, `tools`, `report` |
-| domain | `resolver`, `selection`, `extras`, `intake`, `toplist`, `distmeta`, `manifest`, `downloader` |
+| domain | `resolver`, `selection`, `extras`, `intake`, `scan`, `toplist`, `distmeta`, `manifest`, `downloader` |
 | base | `config`, `platforms`, `models`, `util`, `console` |
 | standalone | `offline` (stdlib only; also the offline-side script, see [decisions](decisions.md)) |
 
