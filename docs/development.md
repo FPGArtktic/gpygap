@@ -24,6 +24,7 @@ uv run --group docs mkdocs build --strict  # what Read the Docs runs
 bin/check-offline-py39                     # offline.py on Python 3.9, in a container
 bin/gpygap sync --top 10                   # end-to-end in the container (~1 GB, ~5 min)
 bin/gpygap sync --plan-only                # sizes only, downloads nothing
+uv run gpygap scan <dir> --stdout          # what a project needs; reads files only
 ```
 
 Set `GPYGAP_ENGINE=docker` if you have docker rather than podman; both `bin/` scripts
@@ -46,6 +47,7 @@ verification.
 | `selection.py` | Wheel tag and marker filtering per platform; builds the `MirrorPlan`; records which targets have no wheel. |
 | `wheelbuild.py` | Builds the wheels upstream never published, in sibling containers; caches results across runs. |
 | `extras.py` | One requirement per extra (`Provides-Extra`, local file or remote PEP 658) of the top projects, `packages.txt` and intake requirements; keeps version specifiers. |
+| `scan.py` | Reads a project directory (declared dependencies plus `ast` imports) and writes an intake requirements file. |
 | `intake.py` | Team files in `intake/`: `uv.lock`, `pylock*.toml` (pins), `*.txt` (requirements); `.md` and dotfiles ignored. |
 | `toplist.py` | Top-N list (hugovk/top-pypi-packages), cached copy as fallback. |
 | `downloader.py` | Parallel downloads, size + SHA-256 verified before the final rename. |

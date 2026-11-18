@@ -72,6 +72,7 @@ nav:
       - file-formats.md
   - Running it:
       - setups.md
+      - scan.md
       - operations.md
       - online-on-windows.md
   - Contributing:
