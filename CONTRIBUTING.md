@@ -64,6 +64,17 @@ The last one takes about a minute and roughly 140 MB, and must end with
 - Rebase rather than merge. A pull request that needs five commits should have five
   commits that each build.
 
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) records every user-visible change, newest first, under
+`## [Unreleased]` until a release is cut. An entry says what the change means for a mirror
+that already exists — the reader may be the person who cannot download a fix. Internal
+refactors, tests and CI changes do not need an entry.
+
+A release is a tag `vX.Y.Z` whose version matches `project.version` in `pyproject.toml` and
+`__version__` in `src/gpygap/__init__.py`; `.github/workflows/release.yml` refuses the tag
+otherwise, runs the whole of CI, and only then publishes.
+
 ## Style
 
 Written out in [docs/development.md](docs/development.md); the short version:
