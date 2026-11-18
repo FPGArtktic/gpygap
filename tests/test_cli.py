@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from gpygap import cli, offline
+from gpygap import cli, offline, scan
 from gpygap.config import ConfigError, load_config
 
 
@@ -129,3 +129,85 @@ def test_a_typo_in_the_configuration_names_the_key_and_the_alternatives(tmp_path
     config.write_text("[packages]\ntpo = 10\n", "utf-8")
     with pytest.raises(ConfigError, match="tpo"):
         load_config(config, {})
+
+
+def test_a_scan_writes_into_the_intake_directory_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "gpygap.toml").write_text('[packages]\nrequirements_dir = "intake"\n', "utf-8")
+    project = tmp_path / "uart_hw"
+    project.mkdir()
+    (project / "bench.py").write_text("import cocotb\n", "utf-8")
+
+    assert cli.main(["scan", str(project)]) == 0
+
+    written = (tmp_path / "intake" / "uart-hw-scan.txt").read_text("utf-8")
+    assert "cocotb" in written
+
+
+def test_a_scan_with_nowhere_to_write_is_the_operators_mistake(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # No requirements_dir configured and no -o: exit 2, not a file in the cwd.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "project").mkdir()
+
+    assert cli.main(["scan", str(tmp_path / "project")]) == 2
+    assert "requirements_dir" in capsys.readouterr().err
+
+
+def test_a_scan_refuses_to_replace_a_file_a_human_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The generated file is meant to be reviewed, and a review that a re-scan can
+    # silently delete is a review nobody will trust.
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bench.py").write_text("import cocotb\n", "utf-8")
+    destination = tmp_path / "ours.txt"
+    destination.write_text("cocotb==1.9.2  # chosen on purpose\n", "utf-8")
+
+    assert cli.main(["scan", str(project), "-o", str(destination)]) == 2
+    assert "--force" in capsys.readouterr().err
+    assert "on purpose" in destination.read_text("utf-8")
+
+    assert cli.main(["scan", str(project), "-o", str(destination), "--force"]) == 0
+    assert "on purpose" not in destination.read_text("utf-8")
+
+
+def test_a_generated_file_is_replaced_without_asking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bench.py").write_text("import cocotb\n", "utf-8")
+    destination = tmp_path / "generated.txt"
+
+    assert cli.main(["scan", str(project), "-o", str(destination)]) == 0
+    (project / "more.py").write_text("import click\n", "utf-8")
+    assert cli.main(["scan", str(project), "-o", str(destination)]) == 0
+    assert "click" in destination.read_text("utf-8")
+
+
+def test_strict_turns_an_import_without_a_distribution_into_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bench.py").write_text("import nosuchpkg\n", "utf-8")
+    monkeypatch.setattr(scan, "_on_index", lambda name, index_url: False)
+
+    # Exit 1: the mirror would be built one package short, which is the kind of
+    # problem a scheduler must not pass over.
+    assert cli.main(["scan", str(project), "--stdout", "--check-index", "--strict"]) == 1
+    assert cli.main(["scan", str(project), "--stdout", "--check-index"]) == 0
+
+
+def test_scanning_something_that_is_not_a_directory_exits_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["scan", str(tmp_path / "nope")]) == 2
+    assert "not a directory" in capsys.readouterr().err
