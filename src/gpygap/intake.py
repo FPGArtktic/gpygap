@@ -64,7 +64,7 @@ def _read(path: Path) -> tuple[list[str], list[str]]:
         if path.name.startswith("pylock") and path.suffix == ".toml":
             return [], list(_pylock_pins(tomllib.loads(path.read_text("utf-8"))))
         if path.suffix == ".txt":
-            return list(_requirement_lines(path.read_text("utf-8"))), []
+            return list(requirement_lines(path.read_text("utf-8"))), []
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         log.warning("Intake %s skipped: %s", path, exc)
         return [], []
@@ -85,8 +85,12 @@ def _pylock_pins(lock: dict[str, Any]) -> Iterator[str]:
             yield f"{package['name']}=={package['version']}"
 
 
-def _requirement_lines(text: str) -> Iterator[str]:
-    """Requirement lines of a requirements file; options (``-r``, ``--hash``…) are dropped."""
+def requirement_lines(text: str) -> Iterator[str]:
+    """Requirement lines of a requirements file; options (``-r``, ``--hash``…) are dropped.
+
+    Public because :mod:`gpygap.scan` reads the requirements files it finds in a
+    project tree, and a second copy of this parser would drift from this one.
+    """
     for raw in _LINE_CONTINUATION.sub(" ", text).splitlines():
         line = raw.split(" #", 1)[0].strip()
         if not line or line.startswith(("#", "-")):
