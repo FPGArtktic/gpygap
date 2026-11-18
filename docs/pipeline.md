@@ -131,6 +131,10 @@ every file in the mirror is unneeded, and the prune would act on it.
 | `packages.extra` + `packages.txt` | `config.py` | our own requirements, with specifiers |
 | `intake/*.txt` | `intake.py` | requirement lines from teams |
 | `intake/uv.lock`, `pylock*.toml` | `intake.py` | exact pins, resolved `--no-deps` |
+
+An `intake/*.txt` is usually written by the team that owns the project. For a project
+that was never packaged, [`gpygap scan`](scan.md) derives one from its manifests and its
+imports; that happens before a run and is not part of one.
 | Extras of all of the above, except pins | `extras.py` | one requirement per `Provides-Extra` |
 | Build backends | `sync.SEED_BUILD_REQUIREMENTS` | setuptools, hatchling, maturin, cmake … |
 | Fixes from earlier runs | `sync._load_fixes` | targeted resolutions that healed a gap before |
