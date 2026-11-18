@@ -48,6 +48,22 @@ def setup_logging(log_dir: Path, run_id: str, *, verbose: bool) -> Path:
     return errors_log
 
 
+def setup_console_logging(*, verbose: bool) -> None:
+    """Logging for the short commands that have no run directory to write logs into.
+
+    ``sync`` keeps a log per run because somebody will ask what a mirror did three
+    weeks ago; a scan is read on the spot and leaves the operator's tree alone.
+    """
+    root = logging.getLogger(ROOT_LOGGER)
+    if any(isinstance(h, _TqdmHandler) for h in root.handlers):
+        return  # a second call would print every record twice
+    handler = _TqdmHandler()
+    handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    handler.setFormatter(logging.Formatter(_CONSOLE_FORMAT))
+    root.setLevel(logging.DEBUG)
+    root.addHandler(handler)
+
+
 def progress(total: int | None, label: str, *, unit: str = "it", as_bytes: bool = False) -> tqdm[Any]:
     """Create a progress bar with the package's common settings."""
     return tqdm(
