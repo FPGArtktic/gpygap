@@ -46,6 +46,7 @@ on the other side of the gap needs no compiler.
 
     [:octicons-arrow-right-24: Where to run it](setups.md) ·
     [Operations](operations.md) ·
+    [Scanning a project](scan.md) ·
     [On Windows](online-on-windows.md)
 
 -   :material-shield-alert:{ .lg .middle } **Known vulnerabilities**
@@ -87,6 +88,7 @@ on the other side of the gap needs no compiler.
 | `gpygap.toml` | Every configuration key, documented inline. |
 | `packages.txt` | Our own packages, mirrored on top of the top list. |
 | `intake/` | Team lock files, mirrored exactly as locked. |
+| `CHANGELOG.md` | What changed in each release, and what it means for an existing mirror. |
 | `CONTRIBUTING.md` | How to propose a change: setup, what a finished change looks like, commit style. |
 | `LICENSE` | GPL-3.0-or-later. |
 
@@ -112,6 +114,7 @@ Licensed GPL-3.0-or-later.
 | fix | A healing request persisted for later runs (`targeted-resolutions.json`). |
 | packages.txt | Our own requirements on top of the top list (`packages.extra_file`); mirrored with dependencies and extras. |
 | intake | Lock and requirements files from teams in `intake/` (`packages.requirements_dir`). |
+| scan | `gpygap scan <dir>`: an intake requirements file derived from a project's manifests and imports, for review. |
 | scope | Everything a run must make installable: top-N, `packages.extra`, packages.txt, intake, their extras, build backends. |
 | pin | `name==version` from an intake lock file, resolved `--no-deps`. |
 | delta | Export of changes since the last export, applied offline with `gpygap_offline.py apply`. |
