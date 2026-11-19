@@ -15,7 +15,7 @@ aspirational.
 flowchart TD
     subgraph fast["Fast, independent, every push"]
         L["lint<br/>ruff format, ruff check, mypy"]
-        U["unit<br/>Linux, Windows, macOS x 3.11-3.14<br/>coverage on every leg"]
+        U["unit<br/>Linux and Windows x 3.11-3.14<br/>coverage on every leg"]
         O["offline-py39<br/>offline.py on the oldest Python"]
         D["docs<br/>mkdocs --strict + render all diagrams"]
     end
@@ -34,21 +34,17 @@ is the part worth reading.
 | Job | What it catches |
 | --- | --- |
 | `lint` | Formatting, lint rules, and `mypy --strict` over `src` and `tests`. |
-| `unit` | The pure logic, on **Linux, Windows and macOS**, each on Python 3.11–3.14. |
+| `unit` | The pure logic, on **Linux and Windows**, each on Python 3.11–3.14. |
 | `offline-py39` | `offline.py` running on Python 3.9, in a container. |
 | `docs` | `mkdocs build --strict`, then every Mermaid diagram rendered. |
 
 Two of those deserve a reason.
 
-**Every host OS is in the unit matrix, not only in the consume jobs.** The suite is mostly
-path handling — mirror-relative POSIX paths, `file://` index URLs, temporary directories —
-and a separator assumption passes on Linux and greets a developer in Warsaw on a Monday.
-macOS earns its place for the two things neither other leg has: arm64, and a
-case-insensitive filesystem. Twelve legs, no exclusions; coverage is collected on every one
-and written into the GitHub job summary.
-
-Note what this does **not** say: that gpygap mirrors for macOS. It says the tool's own code
-runs there. The two are separate claims and only the second is tested — see below.
+**Windows is in the unit matrix, not only in the consume jobs, and on every supported
+Python rather than a representative pair.** The suite is mostly path handling —
+mirror-relative POSIX paths, `file://` index URLs, temporary directories — and a separator
+assumption passes on Linux and greets a developer in Warsaw on a Monday. Eight legs, no
+exclusions; coverage is collected on every one and written into the GitHub job summary.
 
 **Diagrams are rendered, not just built.** `mkdocs --strict` cannot see inside a
 ` ```mermaid ` fence, so a diagram that does not parse reaches the published site as
@@ -248,13 +244,7 @@ Worth knowing before trusting a green tick:
   with the WSL2 backend, and a GitHub-hosted Windows runner has neither. `bin/gpygap.ps1`
   and the path translation in [online-on-windows.md](online-on-windows.md) are still
   checked by hand.
-- **macOS, as a mirror target.** The `unit` suite runs on macOS, so gpygap's own code is
-  known to work there. Nothing else about macOS is: no wheel is built for it, no job
-  installs from a mirror on it, and `.github/ci/gpygap.toml` does not list it in
-  `targets.platforms`. Adding `macos-arm64` there mirrors the wheels that already exist
-  upstream and reports the rest as gaps, which is the documented behaviour, not a tested
-  one. Closing this properly means what Windows already has — a macOS runner building the
-  gaps and handing them back through `build.external_dir` — and that job does not exist.
+- **macOS.** Not built, not consumed, not targeted.
 - **A real air gap.** `--network none` and a blackholed proxy are good imitations of one,
   but they are imitations.
 - **aarch64.** The platform is supported and the wheels can be built under emulation;
