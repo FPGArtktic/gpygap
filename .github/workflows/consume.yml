@@ -86,13 +86,35 @@ jobs:
       - name: Build the ${{ matrix.name }} image
         # Empty build context: only these four lines reach the daemon. A virtualenv
         # sidesteps PEP 668, which Debian and Arch enforce.
+        #
+        # Retried, because the first thing every image does is ask a distribution
+        # mirror for packages, and a mirror that is briefly away takes down a job
+        # that has nothing to say about gpygap. On 2026-11-19 three legs died on
+        # "Unable to connect to archive.ubuntu.com" while a fourth built the same
+        # ubuntu-24.04 image in the same run. Wrapping the whole build rather than
+        # apt covers dnf, pacman and apk too, and the uv installer on the last line
+        # with them. Built layers are cached, so an attempt resumes where the last
+        # one stopped; a Dockerfile that is actually wrong still fails fast, three
+        # times over, and costs 90 seconds of sleep to say so.
         run: |
+          dockerfile="$RUNNER_TEMP/Dockerfile.${{ matrix.name }}"
           printf '%s\n' \
             'FROM ${{ matrix.image }}' \
             'RUN ${{ matrix.setup }}' \
             'RUN ${{ matrix.python }} -m venv /venv' \
             'RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh' \
-            | docker build -t gpygap-consume:${{ matrix.name }} -
+            > "$dockerfile"
+          for attempt in 1 2 3; do
+            if docker build -t gpygap-consume:${{ matrix.name }} - < "$dockerfile"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::${{ matrix.name }} image build failed (attempt $attempt of 3); retrying in $((attempt * 30))s"
+              sleep "$((attempt * 30))"
+            fi
+          done
+          echo "::error::${{ matrix.name }} image build failed three times; see the attempts above"
+          exit 1
       - name: Prove the container really has no network
         # Everything below claims to work offline. If this request succeeded, the
         # claim would be untested and the job would pass for the wrong reason.
