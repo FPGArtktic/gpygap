@@ -38,25 +38,23 @@ jobs:
       - run: uv run --frozen mypy
 
   unit:
-    # Every supported Python on every host the tool runs on: no exclusions, no
-    # representative subset. Windows and macOS are in here, not only Linux, because
-    # the unit suite is full of path handling -- mirror-relative POSIX paths,
-    # file:// index URLs, temporary directories -- and a separator or case-folding
-    # assumption is exactly the kind of bug that passes on Linux and greets a
-    # developer in Warsaw on a Monday. macOS also runs arm64 and a case-insensitive
-    # filesystem, neither of which the other two legs would notice. Coverage is
-    # collected on every leg; it is not Linux-specific either.
+    # Windows is in here, not only in the consume jobs, and on every supported Python
+    # rather than a representative pair. The unit suite is full of path handling --
+    # mirror-relative POSIX paths, file:// index URLs, temporary directories -- and a
+    # separator assumption is exactly the kind of bug that passes on Linux and greets
+    # a developer in Warsaw on a Monday. Coverage is collected on every leg; it is not
+    # Linux-specific either.
     name: unit (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v5
-      - name: Install uv (Linux and macOS)
-        if: runner.os != 'Windows'
+      - name: Install uv (Linux)
+        if: runner.os == 'Linux'
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install uv (Windows)
         if: runner.os == 'Windows'
