@@ -15,7 +15,7 @@ aspirational.
 flowchart TD
     subgraph fast["Fast, independent, every push"]
         L["lint<br/>ruff format, ruff check, mypy"]
-        U["unit<br/>Linux 3.11-3.14, Windows 3.12-3.13<br/>coverage on every leg"]
+        U["unit<br/>Linux and Windows x 3.11-3.14<br/>coverage on every leg"]
         O["offline-py39<br/>offline.py on the oldest Python"]
         D["docs<br/>mkdocs --strict + render all diagrams"]
     end
@@ -34,16 +34,17 @@ is the part worth reading.
 | Job | What it catches |
 | --- | --- |
 | `lint` | Formatting, lint rules, and `mypy --strict` over `src` and `tests`. |
-| `unit` | The pure logic, on Linux 3.11–3.14 **and Windows 3.12–3.13**. |
+| `unit` | The pure logic, on **Linux and Windows**, each on Python 3.11–3.14. |
 | `offline-py39` | `offline.py` running on Python 3.9, in a container. |
 | `docs` | `mkdocs build --strict`, then every Mermaid diagram rendered. |
 
 Two of those deserve a reason.
 
-**Windows is in the unit matrix, not only in the consume jobs.** The suite is mostly path
-handling — mirror-relative POSIX paths, `file://` index URLs, temporary directories — and
-a separator assumption passes on Linux and greets a developer in Warsaw on a Monday.
-Coverage is collected on every leg and written into the GitHub job summary.
+**Windows is in the unit matrix, not only in the consume jobs, and on every supported
+Python rather than a representative pair.** The suite is mostly path handling —
+mirror-relative POSIX paths, `file://` index URLs, temporary directories — and a separator
+assumption passes on Linux and greets a developer in Warsaw on a Monday. Eight legs, no
+exclusions; coverage is collected on every one and written into the GitHub job summary.
 
 **Diagrams are rendered, not just built.** `mkdocs --strict` cannot see inside a
 ` ```mermaid ` fence, so a diagram that does not parse reaches the published site as

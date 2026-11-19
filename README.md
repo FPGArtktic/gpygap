@@ -91,6 +91,7 @@ live in containers.
 ```bash
 git clone https://github.com/FPGArtktic/gpygap && cd gpygap
 $EDITOR packages.txt              # optional: your own packages, one per line
+gpygap scan /srv/projects/app     # optional: derive an intake file from a project tree
 ```
 
 ```toml
@@ -259,6 +260,7 @@ python3 /media/usb/delta-2026-11/gpygap_offline.py apply /media/usb/delta-2026-1
 | Top list | `packages.top` in [gpygap.toml](gpygap.toml) | The N most downloaded projects (default 1000), refreshed every run. |
 | Your packages | [packages.txt](packages.txt) | Internal or niche packages, version ranges, old versions a project still needs. |
 | Team lock files | [intake/](intake/README.md) | Drop a `uv.lock`, `pylock.toml` or `requirements.txt`; everything in it installs offline exactly as locked. |
+| An unpackaged project | `gpygap scan <dir>` ([docs](docs/scan.md)) | A directory with no lock file: the scan reads its manifests and its imports and writes an intake file to review. |
 | Exclusions | `packages.exclude` | Projects you never want (e.g. huge ones). The next project in the ranking takes the slot. |
 | Extras | `packages.extras`, `packages.extras_exclude` | On by default for all of the above; skip extras by name. |
 
@@ -647,6 +649,12 @@ CI does this on every distro before installing anything, so the path is tested.
 
 - The mirror holds the top projects, `packages.txt`, intake files, their extras and
   dependencies. Anything else must be added to `packages.txt`.
+- `gpygap scan` produces a **draft for review**, not an answer. It cannot see a dynamic
+  `importlib.import_module(name)`, it treats the standard library as the one of the
+  interpreter it runs on (3.11+, so a 3.10 target needing `tomli` must be added by hand),
+  and a namespace package such as `google.protobuf` is reported rather than guessed at.
+  Nor can an index supply what a project needs besides Python packages — a cocotb
+  testbench also wants a simulator. See [docs/scan.md](docs/scan.md).
 - CPython only: no PyPy, no GraalPy. Everything else CPython ships is a target: glibc
   (manylinux) and musl (Alpine) on x86-64 and aarch64, Windows x86-64, and the
   free-threaded builds (`3.13t`, `3.14t`) alongside the ordinary ones.

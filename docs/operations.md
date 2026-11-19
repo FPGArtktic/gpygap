@@ -8,12 +8,17 @@ Always through the container, so nothing is installed or built on the host:
 bin/gpygap sync --top 10                       # quick end-to-end test (~1 GB, ~5 min)
 bin/gpygap sync --plan-only                    # sizes only, nothing downloaded
 GPYGAP_MOUNTS=/media/usb bin/gpygap sync --export-delta /media/usb/delta-2026-11
+GPYGAP_MOUNTS=/srv/projects/app bin/gpygap scan /srv/projects/app   # what a project needs
 ```
 
 `bin/gpygap` builds `localhost/gpygap:latest` from `Containerfile` when sources
 changed, mounts the project directory at the same path, runs as the calling user
 (`--userns=keep-id`), and passes all arguments to `gpygap`. Directories outside the
 project (USB drive, mirror on another disk) go into `GPYGAP_MOUNTS`, colon-separated.
+
+`scan` is the one command that touches somebody else's tree: it reads and parses files,
+never executes them, and writes one requirements file for review in `intake/`. See
+[scanning a project directory](scan.md).
 
 Exit codes: `0` complete; `1` incomplete (still missing after healing, or downloads
 failed); `2` configuration error; `130` interrupted (rerun to resume: resolutions younger

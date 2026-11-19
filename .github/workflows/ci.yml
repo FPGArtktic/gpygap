@@ -38,11 +38,12 @@ jobs:
       - run: uv run --frozen mypy
 
   unit:
-    # Windows is in here, not only in the consume jobs. The unit suite is full of
-    # path handling -- mirror-relative POSIX paths, file:// index URLs, temporary
-    # directories -- and a separator assumption is exactly the kind of bug that
-    # passes on Linux and greets a developer in Warsaw on a Monday. Coverage is
-    # collected on every leg; it is not Linux-specific either.
+    # Windows is in here, not only in the consume jobs, and on every supported Python
+    # rather than a representative pair. The unit suite is full of path handling --
+    # mirror-relative POSIX paths, file:// index URLs, temporary directories -- and a
+    # separator assumption is exactly the kind of bug that passes on Linux and greets
+    # a developer in Warsaw on a Monday. Coverage is collected on every leg; it is not
+    # Linux-specific either.
     name: unit (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -50,11 +51,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
-        exclude:
-          # The ends of the range on Linux only; Windows runs the two versions
-          # developers there actually have.
-          - { os: windows-latest, python: "3.11" }
-          - { os: windows-latest, python: "3.14" }
     steps:
       - uses: actions/checkout@v5
       - name: Install uv (Linux)
