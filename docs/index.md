@@ -97,6 +97,18 @@ on the other side of the gap needs no compiler.
 [Mateusz Okulanis](https://fpgartktic.github.io/) &mdash; <https://fpgartktic.github.io/>.
 Licensed GPL-3.0-or-later.
 
+## Contributors
+
+- **Mateusz Chudzik** &mdash; <matchupikchu99@gmail.com>
+    - `gpygap scan <directory>` (1.1.0): works out what a project needs from its own
+      directory, from declared dependencies and from every `import` parsed with `ast`, with
+      `--check-index`, `--strict` and `--force`; see [Scanning a project](scan.md).
+    - `intake.requirement_lines()` made public, so `scan` and `intake/` share one
+      requirements parser.
+    - The changelog and the 1.1.0 release notes.
+    - CI: the unit suite on Windows for every supported Python, and retries for the
+      consume image build when a distribution mirror is briefly unreachable.
+
 ## Glossary
 
 | Term | Meaning |
