@@ -9,6 +9,10 @@ Drop files here to make sure a team's project installs offline exactly as locked
 | `pylock.toml`, `pylock.*.toml` | Same, for PEP 751 lock files. |
 | `*.txt` | Each requirement line with its dependencies (options such as `--hash`, `-r` are ignored). |
 
+A project with no lock file still has to be covered: `gpygap scan <directory>` reads its
+manifests and its imports and writes a reviewable `<project>-scan.txt` here. It is a draft —
+read [docs/scan.md](../docs/scan.md) before trusting the versions in it.
+
 Old pinned versions stay in the mirror for as long as the file is here, even after the
 project leaves the top list. Remove the file when the team no longer needs it.
 This README and other `.md` files are ignored.

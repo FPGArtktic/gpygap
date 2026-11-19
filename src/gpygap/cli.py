@@ -15,9 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from gpygap import offline
-from gpygap.config import DEFAULT_CONFIG_FILE, ConfigError, load_config
-from gpygap.console import ROOT_LOGGER
+from gpygap.config import DEFAULT_CONFIG_FILE, Config, ConfigError, load_config
+from gpygap.console import ROOT_LOGGER, setup_console_logging
+from gpygap.scan import GENERATED_HEADER, ScanResult, render_requirements, scan_project
 from gpygap.sync import SyncOptions, run_sync
+from gpygap.util import normalize_name, write_if_changed
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -40,6 +42,31 @@ def _build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--full-export", action="store_true", help="export the whole mirror, not a delta")
     sync.add_argument("--force-prune", action="store_true", help="ignore sync.max_prune_ratio for this run")
     sync.add_argument("-v", "--verbose", action="store_true")
+
+    scan = commands.add_parser(
+        "scan", help="work out what a project needs and write it as an intake requirements file"
+    )
+    scan.add_argument("path", type=Path, metavar="PATH", help="project directory to scan")
+    scan.add_argument(
+        "-c", "--config", type=Path, help=f"configuration file (default: ./{DEFAULT_CONFIG_FILE} if present)"
+    )
+    scan.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        metavar="FILE",
+        help="where to write (default: <packages.requirements_dir>/<project>-scan.txt)",
+    )
+    scan.add_argument("--stdout", action="store_true", help="print the file instead of writing it")
+    scan.add_argument("--no-imports", action="store_true", help="only read declared dependencies")
+    scan.add_argument(
+        "--check-index",
+        action="store_true",
+        help="confirm guessed names against upstream.index_url; report what it does not have",
+    )
+    scan.add_argument("--force", action="store_true", help="overwrite an output file this tool did not write")
+    scan.add_argument("--strict", action="store_true", help="exit 1 if an import matched no distribution")
+    scan.add_argument("-v", "--verbose", action="store_true")
 
     commands.add_parser(
         "offline",
@@ -77,6 +104,66 @@ def _sync(args: argparse.Namespace) -> int:
     return run_sync(config, options)
 
 
+def _scan(args: argparse.Namespace) -> int:
+    config = load_config(_config_path(args.config), {})
+    root = args.path.resolve()
+    if not root.is_dir():
+        print(f"not a directory: {args.path}", file=sys.stderr)
+        return 2
+    setup_console_logging(verbose=args.verbose)
+    result = scan_project(
+        root,
+        follow_imports=not args.no_imports,
+        index_url=config.index_url if args.check_index else None,
+    )
+    rendered = render_requirements(result)
+    if args.stdout:
+        print(rendered, end="")
+    elif (written := _write_scan(result, rendered, args, config)) is not None:
+        print(f"{len(result.requirements)} requirements -> {written}")
+    else:
+        return 2
+    _report_scan(result)
+    return 1 if args.strict and result.unmatched else 0
+
+
+def _write_scan(result: ScanResult, rendered: str, args: argparse.Namespace, config: Config) -> Path | None:
+    """Write the generated file, or explain to stderr why it was not written."""
+    destination: Path | None = args.output
+    if destination is None:
+        if config.requirements_dir is None:
+            print(
+                "nowhere to write: set packages.requirements_dir in the configuration, "
+                "or pass -o FILE or --stdout",
+                file=sys.stderr,
+            )
+            return None
+        destination = config.requirements_dir / f"{normalize_name(result.root.name)}-scan.txt"
+    if _is_handwritten(destination) and not args.force:
+        print(f"{destination} was not written by gpygap scan; pass --force to replace it", file=sys.stderr)
+        return None
+    write_if_changed(destination, rendered)
+    return destination
+
+
+def _is_handwritten(destination: Path) -> bool:
+    """Whether a file exists that this tool did not generate, so replacing it loses work."""
+    try:
+        with destination.open("r", encoding="utf-8") as handle:
+            return not handle.readline().startswith(GENERATED_HEADER)
+    except OSError:
+        return False
+    except UnicodeDecodeError:
+        return True
+
+
+def _report_scan(result: ScanResult) -> None:
+    for lock in result.lock_files:
+        print(f"lock file, hand it to the intake directory unchanged: {lock}")
+    for item in result.unmatched:
+        print(f"no distribution for import {item.module!r}: {item.reason} ({', '.join(item.origins[:3])})")
+
+
 def main(argv: list[str] | None = None) -> int:
     args, rest = _build_parser().parse_known_args(argv)
     if args.command == "offline":
@@ -85,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"unrecognized arguments: {' '.join(rest)}", file=sys.stderr)
         return 2
     try:
-        return _sync(args)
+        return _scan(args) if args.command == "scan" else _sync(args)
     except ConfigError as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2

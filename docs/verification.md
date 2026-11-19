@@ -62,5 +62,8 @@ that needed it is no longer built.
 
 - That a build *succeeds* on a developer machine (compilers, system libraries).
 - Requirements outside the scope (a project not in top-N, `packages.txt` or intake).
+- Whether a scan found everything a project needs. [`gpygap scan`](scan.md) writes a draft
+  for a human; its lines are verified like any other once they are in `intake/`, but a
+  dependency nobody wrote down cannot be checked for.
 - Python patch versions other than the newest mirrored build per minor version.
 - Clients using a different uv version than the mirrored one for `uv python install`.
