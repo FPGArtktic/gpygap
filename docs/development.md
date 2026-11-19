@@ -126,4 +126,6 @@ run go to `cli.py` and `SyncOptions` instead, not to the config file.
 - Tests cover pure logic and filesystem behaviour with `tmp_path`. No network and no
   subprocesses in `tests/test_*.py`.
 - Every source file starts with the two SPDX lines; the project is GPL-3.0-or-later.
+  A new file names its author in `SPDX-FileCopyrightText`; a change to somebody else's file
+  adds an `SPDX-FileContributor` line and keeps the existing copyright line.
 - Record design decisions, with their reasons, in [decisions.md](decisions.md).

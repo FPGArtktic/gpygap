@@ -1,5 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Mateusz Okulanis
-# SPDX-FileCopyrightText: 2026 Mateusz Chudzik
+# SPDX-FileCopyrightText: 2026 Mateusz Chudzik <matchupikchu99@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 """What a project needs, worked out from the project's own directory.
 

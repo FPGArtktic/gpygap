@@ -87,6 +87,9 @@ Written out in [docs/development.md](docs/development.md); the short version:
 - Everything is in English: code, comments, logs, docs.
 - Every file starts with the two SPDX lines. The project is GPL-3.0-or-later, and by
   contributing you agree your work is licensed that way.
+- A file you create carries your own `SPDX-FileCopyrightText: <year> <name> <email>`
+  line and nobody else's. When you change a file somebody else wrote, leave its copyright
+  line alone and add `SPDX-FileContributor: <name> <email>` under it.
 
 ## Documentation
 

@@ -9,7 +9,7 @@ run one cannot download a fix.
 
 ## [Unreleased]
 
-## [1.1.0] — 2026-11-18
+## [1.1.0] — 2026-11-19
 
 ### Added
 
@@ -30,6 +30,10 @@ run one cannot download a fix.
   - [docs/scan.md](docs/scan.md) covers the workflow (scan → review → pin → sync) and the
     four things a scan cannot see.
 - `console.setup_console_logging()` for commands that have no run directory to log into.
+
+`scan` and everything else in this release was contributed by Mateusz Chudzik
+<matchupikchu99@gmail.com>. The SPDX headers now credit him as author of `scan.py` and
+`test_scan.py`, and as contributor to the files he changed.
 
 ### Changed
 
