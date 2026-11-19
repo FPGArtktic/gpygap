@@ -4,6 +4,7 @@
 [![Docs](https://app.readthedocs.org/projects/gpygap/badge/?version=latest)](https://gpygap.readthedocs.io/en/latest/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?logo=gnu)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Unit suite](https://img.shields.io/badge/unit%20suite-Linux%20%7C%20Windows%20%7C%20macOS-2ea043?logo=githubactions&logoColor=white)](https://github.com/FPGArtktic/gpygap/actions/workflows/ci.yml)
 
 Each way of running it is exercised on every push, and the badge says how far:
 
@@ -14,6 +15,12 @@ Each way of running it is exercised on every push, and the badge says how far:
 A and B are covered end to end. C builds the mirror and its Windows wheels on a Windows
 runner and installs from the result offline; the WSL2 half, where that host also compiles
 the Linux wheels, needs a self-hosted runner and is checked by hand.
+
+The unit suite runs on all three host systems and all four Python versions &mdash; twelve
+legs, no representative subset. macOS is in there for the tool's own code, which is mostly
+path handling; it is **not** a mirror target that CI covers. No host builds macOS wheels,
+so a macOS badge below would claim something nothing proves. See
+[what CI does not test](https://gpygap.readthedocs.io/en/latest/ci/#what-ci-does-not-test).
 
 Installing from the mirror is tested on every push, offline, from a real container of each
 system &mdash; not asserted:
