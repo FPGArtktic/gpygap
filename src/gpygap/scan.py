@@ -30,8 +30,13 @@ scan that walked past it would report a shorter list with exactly the same
 confidence -- the failure this module exists to prevent, arrived at by a
 different route. Declared submodules are therefore read from ``.gitmodules``:
 the populated ones are scanned as part of the tree, and the empty ones are named,
-loudly. Filling them is a network operation and a scan performs none; it reports,
-and a human runs ``git submodule update --init --recursive``.
+loudly.
+
+Filling them is the one thing here that is not reading and parsing, so it is
+opt-in: ``--init-submodules`` runs ``git submodule update --init --recursive``
+before the walk. A scan that did that by default would clone from whatever hosts
+a handed-over directory happens to name, on every run, which is a different
+program from the linter-safe one this is meant to be.
 
 Because a guess is a liability in a mirror nobody can patch from the inside, the
 guessed names can be confirmed against the configured index; whatever it does not
@@ -43,6 +48,7 @@ from __future__ import annotations
 import ast
 import configparser
 import logging
+import subprocess
 import sys
 import tomllib
 import urllib.error
@@ -103,6 +109,9 @@ It is the only part of a submodule that survives a clone which did not recurse,
 which is what makes it the right thing to read: the declaration is still there
 when the content is not.
 """
+
+_FETCH_TIMEOUT = 600.0
+"""Seconds allowed for ``git submodule update``, which clones over the network."""
 
 _DISTRIBUTIONS: Mapping[str, str] = MappingProxyType(
     {
@@ -321,6 +330,55 @@ def _declared_submodule_paths(path: Path) -> Iterator[str]:
             log.warning("Scan %s: submodule path %r leaves the project; ignored", path, declared)
             continue
         yield pure.as_posix()
+
+
+def fetch_submodules(root: Path, *, timeout: float = _FETCH_TIMEOUT) -> str | None:
+    """Fill the project's submodules in place, or say in one sentence why not.
+
+    This is the one thing a scan does that is not reading and parsing, and that is
+    why it has to be asked for: ``git submodule update`` clones whatever URLs the
+    scanned project declares, from hosts this process has no say over. Doing it by
+    default would quietly turn "point gpygap at a directory somebody handed over"
+    into "fetch from wherever that directory's author chose", on every run.
+
+    ``None`` means git reported success. Anything else is a sentence for a human,
+    and the scan goes on regardless: a tree that is still short is better served
+    by the report than by an abort, and ``--strict`` still fails on it.
+    """
+    if not (root / _GITMODULES).is_file():
+        return None
+    if not (root / ".git").exists():
+        return f"{root} is not a git checkout, so its submodules cannot be fetched"
+    command = ("git", "-C", str(root), "submodule", "update", "--init", "--recursive")
+    log.info("Scan %s: fetching submodules with `git %s`", root, " ".join(command[3:]))
+    failure: str | None = None
+    try:
+        # A fixed argument list, no shell: the project's own strings reach git as
+        # configuration it reads itself, never as part of this command.
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+    except FileNotFoundError:
+        failure = "git is not installed here, so the submodules could not be fetched"
+    except subprocess.TimeoutExpired:
+        failure = f"fetching the submodules of {root} did not finish within {timeout:.0f}s"
+    except OSError as exc:
+        failure = f"fetching the submodules of {root} failed: {exc}"
+    else:
+        if completed.returncode != 0:
+            detail = _reason(completed.stderr) or "no output from git"
+            failure = f"fetching the submodules of {root} failed (git exit {completed.returncode}): {detail}"
+    return failure
+
+
+def _reason(text: str) -> str:
+    """The line of git's output worth repeating to the operator.
+
+    ``git submodule update`` retries and then summarises ("Failed to clone 'x' a
+    second time, aborting"), so the last line is the outcome and the first
+    ``fatal:`` is the cause -- which is the one an operator can act on.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    causes = [line for line in lines if line.startswith(("fatal:", "error:"))]
+    return causes[0] if causes else (lines[-1] if lines else "")
 
 
 def _is_populated(where: Path) -> bool:

@@ -35,6 +35,13 @@ FROM docker.io/library/python:3.12-slim-bookworm
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY --from=engine-client /usr/local/bin/docker /usr/local/bin/podman /usr/local/bin/
 
+# git, for `gpygap scan --init-submodules` only. Without it that flag reports a
+# missing git through the wrapper while working on the host, which is a confusing
+# difference to carry for the sake of a few megabytes.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
+
 ENV HOME=/tmp \
     UV_LINK_MODE=copy \
     UV_NO_PROGRESS=1 \
