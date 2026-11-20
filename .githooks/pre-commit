@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Mateusz Chudzik
+# SPDX-FileCopyrightText: 2026 Mateusz Chudzik <matchupikchu99@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Refuse a commit that would put a path from the committer's own machine into
