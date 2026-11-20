@@ -122,7 +122,7 @@ fault.
 | --- | --- | --- |
 | `no-builder` | Nothing here can compile for that platform — `win-amd64` or macOS from a Linux host. | Yes, and it is the documented gap. A Windows builder or `build.external_dir` closes it. |
 | `build-failed` | The build ran and did not produce a wheel. | **Usually not.** See below. |
-| `no-engine` | No container engine was reachable, so nothing was built at all. | No. The mirror is missing every wheel it was asked to compile. |
+| `no-engine` | No container engine was reachable, so the targets that needed one were not built. Targets this host builds in process are attempted anyway, and the engine is not probed at all when none of them needs a container. | No. The mirror is missing the wheels it was asked to compile in a container. |
 
 `build-failed` covers two cases that deserve to be told apart, and the error in
 `<run>.log` says which:
