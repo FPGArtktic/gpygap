@@ -1,6 +1,6 @@
 [project]
 name = "gpygap"
-version = "1.1.0"
+version = "1.2.0"
 description = "Offline PyPI mirror of the most popular projects and their dependencies, for air-gapped networks"
 readme = "README.md"
 license = "GPL-3.0-or-later"

@@ -9,6 +9,8 @@ run one cannot download a fix.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-20
+
 ### Added
 
 - **`gpygap scan --init-submodules`** — run `git submodule update --init --recursive` in the
@@ -43,7 +45,6 @@ run one cannot download a fix.
   and the person who finds out is on the offline side. Note also that `--strict` now exits 1
   when a declared submodule has no content, so a scheduled job that was passing may start
   failing; that failure is the bug being reported, not a new one.
-### Fixed
 
 - **An unreachable container engine no longer costs the wheels the host could build by
   itself.** On Windows, `win-amd64` wheels are compiled in process — MSVC needs Windows, and
@@ -135,6 +136,7 @@ for air-gapped networks.
   network switched off inside Debian, Ubuntu, RHEL (UBI), Arch, Alpine and Windows, with
   `--only-binary :all:` so a source build fails the run.
 
-[Unreleased]: https://github.com/FPGArtktic/gpygap/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/FPGArtktic/gpygap/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/FPGArtktic/gpygap/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/FPGArtktic/gpygap/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/FPGArtktic/gpygap/releases/tag/v1.0.0
