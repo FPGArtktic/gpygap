@@ -9,6 +9,19 @@ run one cannot download a fix.
 
 ## [Unreleased]
 
+### Added
+
+- **`gpygap scan --init-submodules`** — run `git submodule update --init --recursive` in the
+  project and scan the result, so a clone that did not recurse becomes a complete answer in
+  one command. Off by default on purpose: everything else a scan does is reading and parsing,
+  which is what makes it as safe as a linter, while fetching clones over the network from
+  whatever hosts the scanned project itself named in `.gitmodules`. A failed fetch prints the
+  reason git gave and does not abort — the submodules that stayed empty are reported as
+  usual and `--strict` still exits 1, because a tree that is still short is better described
+  than refused. git runs with your environment, so credentials, proxies and `insteadOf` rules
+  apply; ten minutes is the limit for the whole fetch. The container image now carries git,
+  so the flag behaves the same through `bin/gpygap` as on the host.
+
 ### Fixed
 
 - **A project's submodules are no longer counted as empty without saying so.** `gpygap scan`

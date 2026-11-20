@@ -231,3 +231,48 @@ def test_strict_turns_a_submodule_with_no_content_into_a_failure(
     assert cli.main(["scan", str(project), "--stdout", "--strict"]) == 1
     assert cli.main(["scan", str(project), "--stdout"]) == 0
     assert "vendor/lib" in capsys.readouterr().err
+
+
+def gitmodules_for(project: Path, path: str) -> None:
+    (project / ".gitmodules").write_text(
+        f'[submodule "{path}"]\n\tpath = {path}\n\turl = ../{path}.git\n', "utf-8"
+    )
+    (project / path).mkdir(parents=True)
+
+
+def test_init_submodules_fills_the_tree_before_it_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bench.py").write_text("import cocotb\n", "utf-8")
+    gitmodules_for(project, "vendor/lib")
+
+    def fill(root: Path, **kwargs: object) -> None:
+        (root / "vendor" / "lib" / "driver.py").write_text("import cocotb_bus\n", "utf-8")
+
+    monkeypatch.setattr(cli, "fetch_submodules", fill)
+
+    # Strict passes because nothing is empty any more, and the submodule's own
+    # import is in the output: the fetch happens before the walk, not after.
+    assert cli.main(["scan", str(project), "--stdout", "--init-submodules", "--strict"]) == 0
+    assert "cocotb-bus" in capsys.readouterr().out
+
+
+def test_a_fetch_that_failed_still_leaves_a_scan_that_reports_the_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bench.py").write_text("import cocotb\n", "utf-8")
+    gitmodules_for(project, "vendor/lib")
+    monkeypatch.setattr(cli, "fetch_submodules", lambda root, **kwargs: "the remote refused")
+
+    # Exit 1 from --strict, not 2: a tree that is still short is better described
+    # by the report than by refusing to look at it.
+    assert cli.main(["scan", str(project), "--stdout", "--init-submodules", "--strict"]) == 1
+    captured = capsys.readouterr()
+    assert "the remote refused" in captured.err
+    assert "vendor/lib" in captured.err

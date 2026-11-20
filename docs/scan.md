@@ -33,6 +33,8 @@ flowchart LR
     subs -->|populated: read like the rest of the tree| declared
     subs -->|populated: read like the rest of the tree| imports
     subs -.->|no content: nothing to read| report
+    subs -.->|--init-submodules| fill[git submodule update<br/>--init --recursive]
+    fill -.->|then read again| subs
     declared --> file[intake/&lt;project&gt;-scan.txt]
     imports --> map[Distribution name<br/>table, then normalization]
     map --> file
@@ -100,12 +102,36 @@ Nested submodules are reached through the populated ones. An empty submodule hid
 `.gitmodules` as well, which is the second reason it cannot be passed over quietly: nothing
 below it can be counted either.
 
-A scan never fills them in. It reads files and parses them, and fetching a submodule is a
-network operation against somebody else's repository — this tool mirrors an index on a
-schedule, it does not clone whatever a project points at. The fix is a human running
-`git submodule update --init --recursive`. A declaration pointing out of the project
-(`path = ../elsewhere`) is refused rather than followed, because a scan reads whatever it
-walks into.
+A declaration pointing out of the project (`path = ../elsewhere`) is refused rather than
+followed, because a scan reads whatever it walks into.
+
+### Filling them: `--init-submodules`
+
+```bash
+gpygap scan /srv/projects/uart_hw --init-submodules --strict
+```
+
+This runs `git submodule update --init --recursive` in the project and then scans the result,
+so one command turns a non-recursive clone into a complete answer.
+
+It is off by default, and that is deliberate rather than cautious. Everything else a scan
+does is reading and parsing — which is what makes it as safe as a linter and reasonable to
+point at a directory somebody handed over. Fetching clones from whatever hosts *that project*
+named in `.gitmodules`, over the network, before anybody has read them. Being asked for it is
+the difference between "read this directory" and "fetch from wherever its author chose".
+
+A failed fetch does not abort the scan. The reason git gave is printed, the scan goes on, and
+the submodules that stayed empty are reported exactly as above — `--strict` still exits 1.
+A tree that is still short is better described by the report than by a refusal to look:
+
+```text
+fetching the submodules of /srv/projects/uart_hw failed (git exit 1): fatal: transport 'file'
+  not allowed
+```
+
+git runs with your environment, so your credentials, proxies and `insteadOf` rules apply, and
+nothing about the submodule's origin is configured here. Ten minutes is the limit for the
+whole fetch.
 
 ## Confirming the guesses
 
@@ -153,6 +179,7 @@ rm intake/uart-hw-scan.txt   # or the unpinned names would mirror the newest rel
 | `-o FILE` | Write here instead of `<packages.requirements_dir>/<project>-scan.txt`. |
 | `--stdout` | Print the file and write nothing. |
 | `--no-imports` | Read only declared dependencies. |
+| `--init-submodules` | Run `git submodule update --init --recursive` first; clones from the hosts the project declares. |
 | `--check-index` | Confirm guessed names against `upstream.index_url`. |
 | `--strict` | Exit 1 if an import matched no distribution, or a declared submodule has no content. |
 | `--force` | Replace an output file this tool did not write. |
@@ -166,6 +193,8 @@ would lose a human's work.
 
 A scan reads files and parses them; it never executes the project's code, never installs
 anything and never builds. Running it on the host is therefore as safe as running a linter.
+`--init-submodules` is the one exception, and the image carries git so that the flag behaves
+the same way inside the container as outside it.
 Through the wrapper it needs the scanned tree mounted, because `bin/gpygap` mounts only the
 project directory:
 

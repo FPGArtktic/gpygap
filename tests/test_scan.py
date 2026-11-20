@@ -10,6 +10,7 @@ environment, where the imports describe somebody's machine rather than a project
 
 from __future__ import annotations
 
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -296,3 +297,108 @@ def test_the_rendered_file_leads_with_the_submodules_it_could_not_read(tmp_path:
     assert "#   vendor/lib" in rendered
     # Ahead of the requirements, because the list below it is the incomplete part.
     assert rendered.index("INCOMPLETE") < rendered.index("cocotb  #")
+
+
+class FakeCompleted:
+    """Enough of ``subprocess.CompletedProcess`` for the fetch to read."""
+
+    def __init__(self, returncode: int = 0, stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+def test_fetching_submodules_asks_git_to_recurse_in_the_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+    seen: dict[str, object] = {}
+
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> FakeCompleted:
+        seen["command"] = command
+        return FakeCompleted()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert scan.fetch_submodules(tmp_path) is None
+    assert seen["command"] == (
+        "git",
+        "-C",
+        str(tmp_path),
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    )
+
+
+def test_a_project_with_no_submodules_is_never_handed_to_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("git must not be run for a project that declares no submodules")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+
+    assert scan.fetch_submodules(tmp_path) is None
+
+
+def test_a_tree_that_is_not_a_checkout_is_reported_rather_than_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An unpacked archive can carry .gitmodules without carrying a repository.
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("git must not be run outside a checkout")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+
+    assert "not a git checkout" in (scan.fetch_submodules(tmp_path) or "")
+
+
+def test_git_being_absent_is_a_sentence_not_an_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+
+    def missing(*args: object, **kwargs: object) -> None:
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+
+    assert "git is not installed" in (scan.fetch_submodules(tmp_path) or "")
+
+
+def test_a_fetch_that_failed_repeats_what_git_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+    # git retries and then summarises, so the last line is only the outcome and
+    # the first fatal: is the cause -- the part an operator can act on.
+    stderr = (
+        "Cloning into '/x/vendor/lib'...\n"
+        "fatal: could not read from remote repository\n"
+        "Failed to clone 'vendor/lib'. Retry scheduled\n"
+        "fatal: could not read from remote repository\n"
+        "Failed to clone 'vendor/lib' a second time, aborting\n"
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeCompleted(returncode=128, stderr=stderr))
+
+    failure = scan.fetch_submodules(tmp_path) or ""
+
+    assert "git exit 128" in failure
+    assert "could not read from remote repository" in failure
+    assert "a second time" not in failure
+
+
+def test_a_fetch_that_timed_out_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+
+    def slow(*args: object, **kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(cmd="git", timeout=600.0)
+
+    monkeypatch.setattr(subprocess, "run", slow)
+
+    assert "did not finish within 600s" in (scan.fetch_submodules(tmp_path) or "")

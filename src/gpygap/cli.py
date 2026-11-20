@@ -18,7 +18,13 @@ from typing import Any
 from gpygap import offline
 from gpygap.config import DEFAULT_CONFIG_FILE, Config, ConfigError, load_config
 from gpygap.console import ROOT_LOGGER, setup_console_logging
-from gpygap.scan import GENERATED_HEADER, ScanResult, render_requirements, scan_project
+from gpygap.scan import (
+    GENERATED_HEADER,
+    ScanResult,
+    fetch_submodules,
+    render_requirements,
+    scan_project,
+)
 from gpygap.sync import SyncOptions, run_sync
 from gpygap.util import normalize_name, write_if_changed
 
@@ -60,6 +66,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     scan.add_argument("--stdout", action="store_true", help="print the file instead of writing it")
     scan.add_argument("--no-imports", action="store_true", help="only read declared dependencies")
+    scan.add_argument(
+        "--init-submodules",
+        action="store_true",
+        help="run `git submodule update --init --recursive` in the project first; "
+        "this clones from the hosts the project declares, so it is off by default",
+    )
     scan.add_argument(
         "--check-index",
         action="store_true",
@@ -116,6 +128,11 @@ def _scan(args: argparse.Namespace) -> int:
         print(f"not a directory: {args.path}", file=sys.stderr)
         return 2
     setup_console_logging(verbose=args.verbose)
+    if args.init_submodules and (failure := fetch_submodules(root)) is not None:
+        # Not fatal. The scan still describes the tree it can read, and whatever
+        # stayed empty is named below and fails --strict, which is a more useful
+        # answer than refusing to look at the project at all.
+        print(failure, file=sys.stderr)
     result = scan_project(
         root,
         follow_imports=not args.no_imports,
