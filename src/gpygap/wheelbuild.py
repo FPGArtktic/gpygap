@@ -153,6 +153,16 @@ class BuildSummary:
         return [g for g in self.gaps if g.reason == "no-builder"]
 
     @property
+    def no_engine(self) -> list[BuildGap]:
+        """Gaps that exist only because the container engine could not be reached.
+
+        Its own count, because a run can now lose its container targets and still
+        build the ones this host compiles in process: the total number of gaps would
+        no longer be the number the missing engine cost.
+        """
+        return [g for g in self.gaps if g.reason == "no-engine"]
+
+    @property
     def failures(self) -> list[BuildGap]:
         return [g for g in self.gaps if g.reason != "no-builder"]
 
@@ -372,6 +382,13 @@ class WheelFactory:
         """
         if not self._config.build_wheels:
             return True
+        if all(self.builds_natively(platform) for platform in self._config.platforms):
+            # Nothing in this configuration will be handed to a container, so an
+            # engine is not one of this run's requirements. Probing regardless made a
+            # Windows-only run fail whenever the host's daemon happened to be down,
+            # for wheels the host builds in process.
+            log.info("Wheel builds will run on this host; no container engine is needed")
+            return True
         if self._engine_available():
             log.info("Wheel builds will run with %r", self.engine)
             return True
@@ -433,18 +450,11 @@ class WheelFactory:
         ]
         if not jobs:
             return summary
-        if not self._engine_available():
+        if self._needs_container(jobs) and not self._engine_available():
             summary.engine_unreachable = True
-            for sdist, targets in jobs:
-                for target in targets:
-                    gap = BuildGap(sdist, target, "no-engine")
-                    summary.gaps.append(gap)
-                    # Recorded here as well, not only in the summary: `gaps` is what
-                    # reaches MIRROR-GAPS.json, and an empty file next to a run that
-                    # reported a thousand uncovered targets is the worst possible
-                    # combination -- it tells a Windows builder there is nothing to do.
-                    self._gaps[(sdist, target)] = gap
-            return summary
+            jobs = self._native_only(jobs, summary)
+            if not jobs:
+                return summary
 
         self._config.state.build_tmp.mkdir(parents=True, exist_ok=True)
 
@@ -464,6 +474,39 @@ class WheelFactory:
                     log.warning("could not build %s for %s", gap.sdist, gap.target)
         self._save_cache()
         return summary
+
+    def _needs_container(self, jobs: Sequence[tuple[str, list[BuildTarget]]]) -> bool:
+        """Whether any target in ``jobs`` has to go to a container to be built."""
+        return any(
+            not self.builds_natively(PLATFORMS[target.platform]) for _, targets in jobs for target in targets
+        )
+
+    def _native_only(
+        self, jobs: Sequence[tuple[str, list[BuildTarget]]], summary: BuildSummary
+    ) -> list[tuple[str, list[BuildTarget]]]:
+        """Record a ``no-engine`` gap per container target, and keep the native ones.
+
+        A host whose engine is unreachable can still build whatever it builds in
+        process. Dropping those as well would turn one daemon that is not running
+        into a mirror missing wheels this machine was able to compile all along.
+        """
+        kept: list[tuple[str, list[BuildTarget]]] = []
+        for sdist, targets in jobs:
+            native: list[BuildTarget] = []
+            for target in targets:
+                if self.builds_natively(PLATFORMS[target.platform]):
+                    native.append(target)
+                    continue
+                gap = BuildGap(sdist, target, "no-engine")
+                summary.gaps.append(gap)
+                # Recorded here as well, not only in the summary: `gaps` is what
+                # reaches MIRROR-GAPS.json, and an empty file next to a run that
+                # reported a thousand uncovered targets is the worst possible
+                # combination -- it tells a Windows builder there is nothing to do.
+                self._gaps[(sdist, target)] = gap
+            if native:
+                kept.append((sdist, native))
+        return kept
 
     def _build_sdist(
         self, sdist: str, targets: Sequence[BuildTarget], sdist_hashes: Mapping[str, str]

@@ -316,7 +316,7 @@ def _build_wheels(config: Config, factory: WheelFactory, fetcher: Fetcher) -> Bu
             "build.wheels is on but no container engine was reachable: %d targets were "
             "left without a wheel that this run was supposed to build. The mirror is not "
             "what the configuration asked for.",
-            len(summary.gaps),
+            len(summary.no_engine),
         )
     if summary.built or summary.gaps:
         log.info(
