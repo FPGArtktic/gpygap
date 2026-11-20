@@ -408,3 +408,82 @@ def test_an_unreachable_engine_still_publishes_every_gap(tmp_path: Path) -> None
     assert summary.engine_unreachable
     assert {g.reason for g in summary.gaps} == {"no-engine"}
     assert len(factory.gaps) == 2, "the gaps must reach MIRROR-GAPS.json, not just the summary"
+
+
+def test_a_host_that_builds_natively_is_not_gated_behind_a_container_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The bug this pins down: a Windows-only run probed for a container engine it
+    # never uses, so a host whose daemon happened to be down built nothing at all --
+    # and reported every wheel it could have compiled in process as a gap.
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "win32")
+    monkeypatch.setattr("gpygap.wheelbuild._HOST_ARCH", "x86_64")
+    config = config_at(tmp_path, '[build]\nengine = "definitely-not-installed"\n')
+    sdist = tmp_path / "gpygap" / "packages" / "a" / "a-1.tar.gz"
+    sdist.parent.mkdir(parents=True)
+    sdist.write_text("x", "utf-8")
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+
+    def never(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("the engine must not be probed for a native-only run")
+
+    monkeypatch.setattr(factory, "_engine_available", never)
+    monkeypatch.setattr(factory, "_run_native", lambda sdist, target: (None, "no toolchain here"))
+
+    summary = factory.run({"packages/a/a-1.tar.gz": {WINDOWS}}, {})
+
+    assert [g.reason for g in summary.gaps] == ["build-failed"]
+    assert not summary.engine_unreachable
+
+
+def test_an_unreachable_engine_no_longer_costs_the_wheels_this_host_can_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "win32")
+    monkeypatch.setattr("gpygap.wheelbuild._HOST_ARCH", "x86_64")
+    config = config_at(tmp_path)
+    sdist = tmp_path / "gpygap" / "packages" / "a" / "a-1.tar.gz"
+    sdist.parent.mkdir(parents=True)
+    sdist.write_text("x", "utf-8")
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+    # The probe itself, not a bogus engine name: faking a Windows host would send
+    # shutil.which down a path that only exists on a real one.
+    monkeypatch.setattr(factory, "_engine_available", lambda *a, **k: False)
+    monkeypatch.setattr(factory, "_run_native", lambda sdist, target: (None, "tried natively"))
+
+    summary = factory.run({"packages/a/a-1.tar.gz": {LINUX, WINDOWS}}, {})
+
+    # The Linux target goes with the engine; the Windows one is still attempted,
+    # which is the point. The count the operator is told is the first of the two.
+    assert [g.target for g in summary.no_engine] == [LINUX]
+    assert [g.reason for g in summary.gaps if g.target == WINDOWS] == ["build-failed"]
+    assert summary.engine_unreachable
+
+
+def test_the_early_check_stays_quiet_when_no_platform_needs_a_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "win32")
+    monkeypatch.setattr("gpygap.wheelbuild._HOST_ARCH", "x86_64")
+    config = config_at(tmp_path, '[targets]\nplatforms = ["win-amd64"]\n')
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+
+    def never(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("nothing in this configuration needs a container")
+
+    monkeypatch.setattr(factory, "_engine_available", never)
+
+    assert factory.check_engine_early()
+
+
+def test_the_early_check_still_speaks_up_when_a_container_is_needed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The warning an hour before the build stage is the reason the check exists; it
+    # must survive the fix above.
+    monkeypatch.setattr("gpygap.wheelbuild.sys.platform", "linux")
+    config = config_at(tmp_path, '[targets]\nplatforms = ["linux-x86_64", "win-amd64"]\n')
+    factory = WheelFactory(config)  # type: ignore[arg-type]
+    monkeypatch.setattr(factory, "_engine_available", lambda *a, **k: False)
+
+    assert not factory.check_engine_early()
