@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Mateusz Okulanis
+# SPDX-FileContributor: Mateusz Chudzik <matchupikchu99@gmail.com>
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One synchronization run, from the top list to a verified, published mirror.
 

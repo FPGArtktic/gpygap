@@ -105,7 +105,18 @@ Licensed GPL-3.0-or-later.
       `--check-index`, `--strict` and `--force`; see [Scanning a project](scan.md).
     - `intake.requirement_lines()` made public, so `scan` and `intake/` share one
       requirements parser.
-    - The changelog and the 1.1.0 release notes.
+    - Submodules in `gpygap scan` (1.2.0): the scan reads `.gitmodules` instead of
+      trusting the directory, so a clone made without `--recurse-submodules` is no longer
+      reported as complete. Populated submodules are scanned with the submodule named in
+      each provenance comment; empty ones are listed in an `INCOMPLETE` block and fail
+      `--strict`; and `--init-submodules` fills them on request. See
+      [Scanning a project](scan.md).
+    - Wheel builds probe the container engine only when a target needs one (1.2.0), so a
+      Windows host without a running Docker daemon still builds its native `win-amd64`
+      wheels.
+    - The opt-in `.githooks/pre-commit` hook, which refuses a commit that adds a path from
+      the committer's own machine.
+    - The changelog and the release notes for 1.1.0 and 1.2.0.
     - CI: the unit suite on Windows for every supported Python, and retries for the
       consume image build when a distribution mirror is briefly unreachable.
 
