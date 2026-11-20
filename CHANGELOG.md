@@ -9,6 +9,28 @@ run one cannot download a fix.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A project's submodules are no longer counted as empty without saying so.** `gpygap scan`
+  now reads `.gitmodules` instead of trusting the directory. A submodule is part of a project
+  but not part of every clone of it — `git clone` without `--recurse-submodules` leaves the
+  directory behind empty — so a scan of a non-recursive clone used to report a shorter list
+  with exactly the same confidence as a complete one, and nothing in its output said which it
+  was. Populated submodules are read like the rest of the tree, with the submodule in each
+  provenance comment (`pyserial==3.5  # declared, vendor/lib/pyproject.toml`); declared ones
+  with no content are named in the log, on stderr, and in an `INCOMPLETE` block at the top of
+  the generated file, ahead of the requirements. Nested submodules are reached through the
+  populated ones, and a declaration pointing out of the project is refused rather than
+  followed. A scan still fetches nothing: filling a submodule is a human running
+  `git submodule update --init --recursive`.
+
+  **For a mirror that already exists:** re-scan every project with submodules whose intake
+  file was generated before this change. If the tree was fetched without recursing, the
+  packages its submodules need were never written into that file and so were never mirrored —
+  and the person who finds out is on the offline side. Note also that `--strict` now exits 1
+  when a declared submodule has no content, so a scheduled job that was passing may start
+  failing; that failure is the bug being reported, not a new one.
+
 ## [1.1.0] — 2026-11-19
 
 ### Added
