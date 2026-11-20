@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Mateusz Chudzik
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Refuse a commit that would put a path from the committer's own machine into
+# history. Documentation here is read by people setting up an air-gapped
+# mirror, so an example path has to be one they can retype -- /srv/gpygap,
+# /media/usb -- and never one that happens to exist on the machine that wrote
+# it. A leaked home directory also names its owner.
+#
+# Only added lines are checked, so a pre-existing line never blocks an
+# unrelated commit. `git commit --no-verify` skips the check.
+set -uo pipefail
+
+hook_self=".githooks/pre-commit"
+status=0
+
+# Absolute home directories of any shape. Documentation says ~/ instead; a tool
+# that genuinely needs one builds it at runtime from $HOME.
+patterns=(
+    '(^|[^A-Za-z0-9_])/home/[A-Za-z0-9._-]+'
+    '(^|[^A-Za-z0-9_])/Users/[A-Za-z0-9._-]+'
+    '[A-Za-z]:\\+Users\\+[A-Za-z0-9._-]+'
+    '(^|[^A-Za-z0-9_])/root/'
+)
+labels=(
+    'a Linux home directory (use ~/ or a neutral path such as /srv/gpygap)'
+    'a macOS home directory (use ~/ or a neutral path)'
+    'a Windows user profile (use %USERPROFILE% or a neutral path such as C:\gpygap)'
+    "root's home directory"
+)
+
+# This machine specifically: its home, its login name and the checkout's own
+# absolute path, whatever shape they take.
+if [[ -n ${HOME:-} && $HOME != / ]]; then
+    patterns+=("$(sed 's/[][\.*^$(){}?+|/]/\\&/g' <<<"$HOME")")
+    labels+=("this machine's home directory")
+fi
+me=$(id -un 2>/dev/null || true)
+if [[ -n $me && ${#me} -ge 3 ]]; then
+    patterns+=("(^|[^A-Za-z0-9_-])${me}([^A-Za-z0-9_-]|$)")
+    labels+=("this machine's user name")
+fi
+
+mapfile -d '' -t files < <(git diff --cached --name-only -z --diff-filter=ACM)
+
+for file in "${files[@]}"; do
+    [[ $file == "$hook_self" ]] && continue
+    added=$(git diff --cached --no-color -U0 --diff-filter=ACM -- "$file" |
+        grep '^+' | grep -v '^+++' | cut -c2-) || continue
+    [[ -z $added ]] && continue
+    for i in "${!patterns[@]}"; do
+        hits=$(grep -nE -- "${patterns[$i]}" <<<"$added") || continue
+        if [[ $status -eq 0 ]]; then
+            echo "pre-commit: a path from this machine is being committed." >&2
+            status=1
+        fi
+        echo >&2
+        echo "  $file -- ${labels[$i]}:" >&2
+        sed 's/^[0-9]*:/    /' <<<"$hits" | head -5 >&2
+    done
+done
+
+if [[ $status -ne 0 ]]; then
+    cat >&2 <<'MSG'
+
+Replace it with an example a reader can retype, or with a path built from
+$HOME at runtime. `git commit --no-verify` commits it anyway.
+MSG
+    exit 1
+fi
+
+# This repository points core.hooksPath at .githooks, which takes precedence
+# over a pre-commit hook configured globally. Run that one too, so setting this
+# up here does not quietly disable it.
+global_hooks=$(git config --global core.hooksPath 2>/dev/null || true)
+if [[ -n $global_hooks ]]; then
+    global_hooks=${global_hooks/#\~/$HOME}
+    if [[ -x "$global_hooks/pre-commit" ]]; then
+        exec "$global_hooks/pre-commit" "$@"
+    fi
+fi
+
+exit 0

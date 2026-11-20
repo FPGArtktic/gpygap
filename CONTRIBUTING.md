@@ -26,6 +26,17 @@ else — building the mirror, building sdists, the integration tests — runs in
 because building an sdist executes code downloaded from the internet and the host that
 builds a mirror must stay clean. You need podman (or docker, with `GPYGAP_ENGINE=docker`).
 
+```bash
+git config core.hooksPath .githooks
+```
+
+That turns on `.githooks/pre-commit`, which refuses a commit whose added lines
+contain a path from your own machine -- a home directory, a Windows user profile, your
+login name. Example paths in `docs/` are read by somebody setting up a mirror on a
+machine that is not yours, so they have to be ones they can retype: `/srv/gpygap`,
+`/media/usb`, `~/.config/uv/uv.toml`. If you already point `core.hooksPath` somewhere
+globally, the hook chains to that one after its own check.
+
 ## What a finished change looks like
 
 ```bash
