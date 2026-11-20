@@ -26,9 +26,13 @@ intake file.
 ```mermaid
 flowchart LR
     tree[Project directory]
+    tree --> subs[Submodules<br/>.gitmodules]
     tree --> declared[Declared dependencies<br/>pyproject.toml, setup.cfg,<br/>requirements*.txt]
     tree --> imports[Imports<br/>ast.parse of every .py]
     tree --> locks[Lock files<br/>uv.lock, pylock*.toml]
+    subs -->|populated: read like the rest of the tree| declared
+    subs -->|populated: read like the rest of the tree| imports
+    subs -.->|no content: nothing to read| report
     declared --> file[intake/&lt;project&gt;-scan.txt]
     imports --> map[Distribution name<br/>table, then normalization]
     map --> file
@@ -65,6 +69,43 @@ by PEP 503 normalization, which is all `cocotb_bus` → `cocotb-bus` needs.
 **Lock files are reported, never flattened.** `intake/` reads `uv.lock` and `pylock*.toml`
 natively and exactly; rewriting one into loose requirements would throw away the pinning that
 made it worth having. The scan names them and tells you to hand them over unchanged.
+
+## Submodules
+
+A submodule is part of the project and not part of every clone of it. `git clone` without
+`--recurse-submodules` leaves the directory behind empty, so the same project scans two
+different ways depending on how it was fetched — and the shorter answer arrives with exactly
+the same confidence as the complete one.
+
+So the declaration is read, not just the directory. `.gitmodules` is tracked like any other
+file and survives a clone that did not recurse: it still says what should be there when the
+content is not.
+
+- **Populated** submodules are read like the rest of the tree. Their manifests and their
+  imports become requirements with the submodule in the provenance comment, which is how a
+  reviewer sees that a line came from vendored code rather than from the project proper:
+  `pyserial==3.5  # declared, vendor/lib/pyproject.toml`.
+- **Empty** ones are named — in the log, on stderr, and in a block at the top of the
+  generated file, ahead of the requirements, because the list below it is the incomplete
+  part. `--strict` exits 1, the same as for an unmatched import, for the same reason: the
+  mirror would be built short.
+
+```text
+W Scan /srv/projects/uart_hw: 1 of 1 submodules have no content, so their requirements are
+  missing from this scan: vendor/lib. Run `git submodule update --init --recursive` and
+  scan again.
+```
+
+Nested submodules are reached through the populated ones. An empty submodule hides its own
+`.gitmodules` as well, which is the second reason it cannot be passed over quietly: nothing
+below it can be counted either.
+
+A scan never fills them in. It reads files and parses them, and fetching a submodule is a
+network operation against somebody else's repository — this tool mirrors an index on a
+schedule, it does not clone whatever a project points at. The fix is a human running
+`git submodule update --init --recursive`. A declaration pointing out of the project
+(`path = ../elsewhere`) is refused rather than followed, because a scan reads whatever it
+walks into.
 
 ## Confirming the guesses
 
@@ -113,7 +154,7 @@ rm intake/uart-hw-scan.txt   # or the unpinned names would mirror the newest rel
 | `--stdout` | Print the file and write nothing. |
 | `--no-imports` | Read only declared dependencies. |
 | `--check-index` | Confirm guessed names against `upstream.index_url`. |
-| `--strict` | Exit 1 if an import matched no distribution. |
+| `--strict` | Exit 1 if an import matched no distribution, or a declared submodule has no content. |
 | `--force` | Replace an output file this tool did not write. |
 | `-c FILE` | Configuration file; `./gpygap.toml` is used if present. |
 
@@ -143,5 +184,7 @@ GPYGAP_MOUNTS=/srv/projects/uart_hw bin/gpygap scan /srv/projects/uart_hw
   distribution. These land in the unmatched list on purpose, rather than being guessed at.
 - **Non-Python requirements.** A testbench needs a simulator too; `cocotb_sim/Makefile`
   wanting `iverilog` is not something an index can supply.
+- **What an empty submodule would have needed.** The scan can say that one is empty and
+  refuse to call the result complete; it cannot say what is inside it.
 
 The output is a draft for a human, and the limits above are why.

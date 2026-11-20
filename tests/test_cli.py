@@ -212,3 +212,22 @@ def test_scanning_something_that_is_not_a_directory_exits_two(
     monkeypatch.chdir(tmp_path)
     assert cli.main(["scan", str(tmp_path / "nope")]) == 2
     assert "not a directory" in capsys.readouterr().err
+
+
+def test_strict_turns_a_submodule_with_no_content_into_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "bench.py").write_text("import cocotb\n", "utf-8")
+    (project / ".gitmodules").write_text(
+        '[submodule "vendor/lib"]\n\tpath = vendor/lib\n\turl = ../lib.git\n', "utf-8"
+    )
+    (project / "vendor" / "lib").mkdir(parents=True)
+
+    # Exit 1 for the same reason an unmatched import does it: the mirror would be
+    # built short, and here the scan cannot even say by how much.
+    assert cli.main(["scan", str(project), "--stdout", "--strict"]) == 1
+    assert cli.main(["scan", str(project), "--stdout"]) == 0
+    assert "vendor/lib" in capsys.readouterr().err

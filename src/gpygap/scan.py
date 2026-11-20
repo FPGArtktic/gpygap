@@ -24,6 +24,15 @@ Lock files are reported, never flattened: ``intake/`` reads ``uv.lock`` and
 ``pylock*.toml`` natively and exactly, and a scan that rewrote them into loose
 requirements would throw away the pinning that made them worth having.
 
+A submodule is part of the project but not part of every clone of it. ``git
+clone`` without ``--recurse-submodules`` leaves the directory behind empty, and a
+scan that walked past it would report a shorter list with exactly the same
+confidence -- the failure this module exists to prevent, arrived at by a
+different route. Declared submodules are therefore read from ``.gitmodules``:
+the populated ones are scanned as part of the tree, and the empty ones are named,
+loudly. Filling them is a network operation and a scan performs none; it reports,
+and a human runs ``git submodule update --init --recursive``.
+
 Because a guess is a liability in a mirror nobody can patch from the inside, the
 guessed names can be confirmed against the configured index; whatever it does not
 know is reported for a human instead of being written as a requirement.
@@ -42,7 +51,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
 
@@ -86,6 +95,14 @@ scan into a mirror of somebody's whole machine.
 """
 
 _MANIFEST_NAMES = frozenset({"pyproject.toml", "setup.cfg"})
+
+_GITMODULES = ".gitmodules"
+"""Where git records the submodules a project declares, tracked like any other file.
+
+It is the only part of a submodule that survives a clone which did not recurse,
+which is what makes it the right thing to read: the declaration is still there
+when the content is not.
+"""
 
 _DISTRIBUTIONS: Mapping[str, str] = MappingProxyType(
     {
@@ -162,6 +179,16 @@ class Unmatched:
 
 
 @dataclass(frozen=True, slots=True)
+class Submodule:
+    """A submodule the project declares, and whether this clone actually has it."""
+
+    path: str
+    """Path of the submodule, relative to the scanned root, in POSIX form."""
+    populated: bool
+    """Whether its working tree is there. If it is not, its requirements are invisible."""
+
+
+@dataclass(frozen=True, slots=True)
 class ScanResult:
     """Everything one scan of one directory found."""
 
@@ -171,11 +198,18 @@ class ScanResult:
     lock_files: tuple[str, ...]
     """Lock files found in the tree; they belong in ``intake/`` unchanged."""
     python_files: int
+    submodules: tuple[Submodule, ...] = ()
+    """Submodules declared in ``.gitmodules``, populated or not."""
 
     @property
     def requirements(self) -> tuple[str, ...]:
         """The requirement lines, de-duplicated, in the order they were discovered."""
         return tuple(dict.fromkeys(d.requirement for d in self.discoveries))
+
+    @property
+    def missing_submodules(self) -> tuple[Submodule, ...]:
+        """Declared submodules with no content, whose requirements this scan cannot see."""
+        return tuple(module for module in self.submodules if not module.populated)
 
 
 def scan_project(root: Path, *, follow_imports: bool = True, index_url: str | None = None) -> ScanResult:
@@ -185,6 +219,7 @@ def scan_project(root: Path, *, follow_imports: bool = True, index_url: str | No
     does not have becomes an :class:`Unmatched` entry rather than a requirement.
     """
     files = tuple(_files(root))
+    submodules = tuple(_submodules(root))
     manifests, locks = _manifests(root, files)
     discoveries = list(manifests)
     unmatched: list[Unmatched] = []
@@ -199,12 +234,27 @@ def scan_project(root: Path, *, follow_imports: bool = True, index_url: str | No
         len(python_files),
         len(unmatched),
     )
+    if missing := [module.path for module in submodules if not module.populated]:
+        # Loud, because the result still looks like a complete answer: the count
+        # above is a count of what was readable, not of what the project needs.
+        log.warning(
+            "Scan %s: %d of %d submodules have no content, so their requirements are "
+            "missing from this scan: %s. Run `git submodule update --init --recursive` "
+            "and scan again.",
+            root,
+            len(missing),
+            len(submodules),
+            ", ".join(missing),
+        )
+    elif submodules:
+        log.info("Scan %s: %d submodules, all populated and scanned", root, len(submodules))
     return ScanResult(
         root=root,
         discoveries=tuple(discoveries),
         unmatched=tuple(unmatched),
         lock_files=tuple(locks),
         python_files=len(python_files),
+        submodules=submodules,
     )
 
 
@@ -227,6 +277,63 @@ def _files(root: Path) -> Iterator[Path]:
             yield from _files(entry)
         elif entry.is_file():
             yield entry
+
+
+def _submodules(root: Path, prefix: str = "") -> Iterator[Submodule]:
+    """Submodules declared below ``root``, and whether their content is there.
+
+    Nested submodules are reached only through the populated ones, because an
+    empty submodule hides its own ``.gitmodules`` along with everything else.
+    That is a second reason to report it rather than pass over it: what it
+    declares in turn cannot be counted either.
+    """
+    for declared in _declared_submodule_paths(root / _GITMODULES):
+        where = root / declared
+        populated = _is_populated(where)
+        yield Submodule(path=f"{prefix}{declared}", populated=populated)
+        if populated:
+            yield from _submodules(where, f"{prefix}{declared}/")
+
+
+def _declared_submodule_paths(path: Path) -> Iterator[str]:
+    """The ``path`` of every submodule section in a ``.gitmodules`` file."""
+    if not path.is_file():
+        return
+    parser = configparser.ConfigParser()
+    try:
+        # Git indents with tabs and tolerates indentation configparser would read
+        # as a continuation of the previous value, so the levels are flattened
+        # first. No value in this file is ever written across several lines.
+        text = "\n".join(line.strip() for line in path.read_text("utf-8").splitlines())
+        parser.read_string(text, source=str(path))
+    except (OSError, UnicodeDecodeError, configparser.Error) as exc:
+        log.warning("Scan %s skipped: %s", path, exc)
+        return
+    for section in parser.sections():
+        if not section.startswith("submodule"):
+            continue
+        if not (declared := parser.get(section, "path", fallback="").strip()):
+            continue
+        pure = PurePosixPath(declared)
+        if pure.is_absolute() or ".." in pure.parts:
+            # A scan reads whatever it walks into, so a declaration pointing out
+            # of the project is refused rather than followed.
+            log.warning("Scan %s: submodule path %r leaves the project; ignored", path, declared)
+            continue
+        yield pure.as_posix()
+
+
+def _is_populated(where: Path) -> bool:
+    """Whether a submodule's working tree is really there.
+
+    ``git clone`` without ``--recurse-submodules`` leaves an empty directory, and
+    an archive of the superproject may not even carry that much.
+    """
+    try:
+        return where.is_dir() and any(where.iterdir())
+    except OSError as exc:
+        log.warning("Scan cannot read %s: %s", where, exc)
+        return False
 
 
 def _manifests(root: Path, files: Iterable[Path]) -> tuple[list[Discovery], list[str]]:
@@ -423,6 +530,16 @@ def render_requirements(result: ScanResult, *, today: date | None = None) -> str
         "# the next sync: an import name is not always a distribution name, and a line",
         "# marked 'guessed' is this tool's normalization of one, nothing stronger.",
     ]
+    if missing := result.missing_submodules:
+        # Before every other block: the lines further down are an incomplete answer,
+        # and the reader has to learn that before they start trusting them.
+        lines += [
+            "#",
+            "# INCOMPLETE. These submodules are declared by the project and have no",
+            "# content here, so whatever they require is absent from the list below.",
+            "# Run `git submodule update --init --recursive` and scan again:",
+            *(f"#   {module.path}" for module in missing),
+        ]
     if result.lock_files:
         lines += [
             "#",

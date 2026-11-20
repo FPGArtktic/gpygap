@@ -66,7 +66,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="confirm guessed names against upstream.index_url; report what it does not have",
     )
     scan.add_argument("--force", action="store_true", help="overwrite an output file this tool did not write")
-    scan.add_argument("--strict", action="store_true", help="exit 1 if an import matched no distribution")
+    scan.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 if an import matched no distribution, or a declared submodule has no content",
+    )
     scan.add_argument("-v", "--verbose", action="store_true")
 
     commands.add_parser(
@@ -125,7 +129,7 @@ def _scan(args: argparse.Namespace) -> int:
     else:
         return 2
     _report_scan(result)
-    return 1 if args.strict and result.unmatched else 0
+    return 1 if args.strict and (result.unmatched or result.missing_submodules) else 0
 
 
 def _write_scan(result: ScanResult, rendered: str, args: argparse.Namespace, config: Config) -> Path | None:
@@ -159,6 +163,12 @@ def _is_handwritten(destination: Path) -> bool:
 
 
 def _report_scan(result: ScanResult) -> None:
+    for module in result.missing_submodules:
+        print(
+            f"submodule has no content, so its requirements are missing from this scan: "
+            f"{module.path} (run `git submodule update --init --recursive`)",
+            file=sys.stderr,
+        )
     for lock in result.lock_files:
         print(f"lock file, hand it to the intake directory unchanged: {lock}")
     for item in result.unmatched:
