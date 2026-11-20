@@ -9,6 +9,19 @@ run one cannot download a fix.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An unreachable container engine no longer costs the wheels the host could build by
+  itself.** On Windows, `win-amd64` wheels are compiled in process — MSVC needs Windows, and
+  no container changes that — but the build stage probed for a container engine before doing
+  anything and, when the probe failed, reported every target as a `no-engine` gap, including
+  the ones that needed no container. A host whose Docker daemon happened not to be running
+  therefore built nothing, and said the packages were at fault. The engine is now probed only
+  when some target actually needs one, and a failed probe costs only those targets: the
+  native ones are still built. The early warning before a long run is unchanged where a
+  container really is required. For a mirror that already exists: a run that ended with
+  `no-engine` gaps on `win-amd64` was wrong about them — re-run it and the wheels appear.
+
 ## [1.1.0] — 2026-11-19
 
 ### Added
