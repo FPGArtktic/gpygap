@@ -9,6 +9,40 @@ run one cannot download a fix.
 
 ## [Unreleased]
 
+### Added
+
+- **`gpygap scan --init-submodules`** — run `git submodule update --init --recursive` in the
+  project and scan the result, so a clone that did not recurse becomes a complete answer in
+  one command. Off by default on purpose: everything else a scan does is reading and parsing,
+  which is what makes it as safe as a linter, while fetching clones over the network from
+  whatever hosts the scanned project itself named in `.gitmodules`. A failed fetch prints the
+  reason git gave and does not abort — the submodules that stayed empty are reported as
+  usual and `--strict` still exits 1, because a tree that is still short is better described
+  than refused. git runs with your environment, so credentials, proxies and `insteadOf` rules
+  apply; ten minutes is the limit for the whole fetch. The container image now carries git,
+  so the flag behaves the same through `bin/gpygap` as on the host.
+
+### Fixed
+
+- **A project's submodules are no longer counted as empty without saying so.** `gpygap scan`
+  now reads `.gitmodules` instead of trusting the directory. A submodule is part of a project
+  but not part of every clone of it — `git clone` without `--recurse-submodules` leaves the
+  directory behind empty — so a scan of a non-recursive clone used to report a shorter list
+  with exactly the same confidence as a complete one, and nothing in its output said which it
+  was. Populated submodules are read like the rest of the tree, with the submodule in each
+  provenance comment (`pyserial==3.5  # declared, vendor/lib/pyproject.toml`); declared ones
+  with no content are named in the log, on stderr, and in an `INCOMPLETE` block at the top of
+  the generated file, ahead of the requirements. Nested submodules are reached through the
+  populated ones, and a declaration pointing out of the project is refused rather than
+  followed. A scan still fetches nothing: filling a submodule is a human running
+  `git submodule update --init --recursive`.
+
+  **For a mirror that already exists:** re-scan every project with submodules whose intake
+  file was generated before this change. If the tree was fetched without recursing, the
+  packages its submodules need were never written into that file and so were never mirrored —
+  and the person who finds out is on the offline side. Note also that `--strict` now exits 1
+  when a declared submodule has no content, so a scheduled job that was passing may start
+  failing; that failure is the bug being reported, not a new one.
 ### Fixed
 
 - **An unreachable container engine no longer costs the wheels the host could build by

@@ -26,9 +26,15 @@ intake file.
 ```mermaid
 flowchart LR
     tree[Project directory]
+    tree --> subs[Submodules<br/>.gitmodules]
     tree --> declared[Declared dependencies<br/>pyproject.toml, setup.cfg,<br/>requirements*.txt]
     tree --> imports[Imports<br/>ast.parse of every .py]
     tree --> locks[Lock files<br/>uv.lock, pylock*.toml]
+    subs -->|populated: read like the rest of the tree| declared
+    subs -->|populated: read like the rest of the tree| imports
+    subs -.->|no content: nothing to read| report
+    subs -.->|--init-submodules| fill[git submodule update<br/>--init --recursive]
+    fill -.->|then read again| subs
     declared --> file[intake/&lt;project&gt;-scan.txt]
     imports --> map[Distribution name<br/>table, then normalization]
     map --> file
@@ -65,6 +71,67 @@ by PEP 503 normalization, which is all `cocotb_bus` → `cocotb-bus` needs.
 **Lock files are reported, never flattened.** `intake/` reads `uv.lock` and `pylock*.toml`
 natively and exactly; rewriting one into loose requirements would throw away the pinning that
 made it worth having. The scan names them and tells you to hand them over unchanged.
+
+## Submodules
+
+A submodule is part of the project and not part of every clone of it. `git clone` without
+`--recurse-submodules` leaves the directory behind empty, so the same project scans two
+different ways depending on how it was fetched — and the shorter answer arrives with exactly
+the same confidence as the complete one.
+
+So the declaration is read, not just the directory. `.gitmodules` is tracked like any other
+file and survives a clone that did not recurse: it still says what should be there when the
+content is not.
+
+- **Populated** submodules are read like the rest of the tree. Their manifests and their
+  imports become requirements with the submodule in the provenance comment, which is how a
+  reviewer sees that a line came from vendored code rather than from the project proper:
+  `pyserial==3.5  # declared, vendor/lib/pyproject.toml`.
+- **Empty** ones are named — in the log, on stderr, and in a block at the top of the
+  generated file, ahead of the requirements, because the list below it is the incomplete
+  part. `--strict` exits 1, the same as for an unmatched import, for the same reason: the
+  mirror would be built short.
+
+```text
+W Scan /srv/projects/uart_hw: 1 of 1 submodules have no content, so their requirements are
+  missing from this scan: vendor/lib. Run `git submodule update --init --recursive` and
+  scan again.
+```
+
+Nested submodules are reached through the populated ones. An empty submodule hides its own
+`.gitmodules` as well, which is the second reason it cannot be passed over quietly: nothing
+below it can be counted either.
+
+A declaration pointing out of the project (`path = ../elsewhere`) is refused rather than
+followed, because a scan reads whatever it walks into.
+
+### Filling them: `--init-submodules`
+
+```bash
+gpygap scan /srv/projects/uart_hw --init-submodules --strict
+```
+
+This runs `git submodule update --init --recursive` in the project and then scans the result,
+so one command turns a non-recursive clone into a complete answer.
+
+It is off by default, and that is deliberate rather than cautious. Everything else a scan
+does is reading and parsing — which is what makes it as safe as a linter and reasonable to
+point at a directory somebody handed over. Fetching clones from whatever hosts *that project*
+named in `.gitmodules`, over the network, before anybody has read them. Being asked for it is
+the difference between "read this directory" and "fetch from wherever its author chose".
+
+A failed fetch does not abort the scan. The reason git gave is printed, the scan goes on, and
+the submodules that stayed empty are reported exactly as above — `--strict` still exits 1.
+A tree that is still short is better described by the report than by a refusal to look:
+
+```text
+fetching the submodules of /srv/projects/uart_hw failed (git exit 1): fatal: transport 'file'
+  not allowed
+```
+
+git runs with your environment, so your credentials, proxies and `insteadOf` rules apply, and
+nothing about the submodule's origin is configured here. Ten minutes is the limit for the
+whole fetch.
 
 ## Confirming the guesses
 
@@ -112,8 +179,9 @@ rm intake/uart-hw-scan.txt   # or the unpinned names would mirror the newest rel
 | `-o FILE` | Write here instead of `<packages.requirements_dir>/<project>-scan.txt`. |
 | `--stdout` | Print the file and write nothing. |
 | `--no-imports` | Read only declared dependencies. |
+| `--init-submodules` | Run `git submodule update --init --recursive` first; clones from the hosts the project declares. |
 | `--check-index` | Confirm guessed names against `upstream.index_url`. |
-| `--strict` | Exit 1 if an import matched no distribution. |
+| `--strict` | Exit 1 if an import matched no distribution, or a declared submodule has no content. |
 | `--force` | Replace an output file this tool did not write. |
 | `-c FILE` | Configuration file; `./gpygap.toml` is used if present. |
 
@@ -125,6 +193,8 @@ would lose a human's work.
 
 A scan reads files and parses them; it never executes the project's code, never installs
 anything and never builds. Running it on the host is therefore as safe as running a linter.
+`--init-submodules` is the one exception, and the image carries git so that the flag behaves
+the same way inside the container as outside it.
 Through the wrapper it needs the scanned tree mounted, because `bin/gpygap` mounts only the
 project directory:
 
@@ -143,5 +213,7 @@ GPYGAP_MOUNTS=/srv/projects/uart_hw bin/gpygap scan /srv/projects/uart_hw
   distribution. These land in the unmatched list on purpose, rather than being guessed at.
 - **Non-Python requirements.** A testbench needs a simulator too; `cocotb_sim/Makefile`
   wanting `iverilog` is not something an index can supply.
+- **What an empty submodule would have needed.** The scan can say that one is empty and
+  refuse to call the result complete; it cannot say what is inside it.
 
 The output is a draft for a human, and the limits above are why.

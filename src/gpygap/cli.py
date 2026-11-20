@@ -18,7 +18,13 @@ from typing import Any
 from gpygap import offline
 from gpygap.config import DEFAULT_CONFIG_FILE, Config, ConfigError, load_config
 from gpygap.console import ROOT_LOGGER, setup_console_logging
-from gpygap.scan import GENERATED_HEADER, ScanResult, render_requirements, scan_project
+from gpygap.scan import (
+    GENERATED_HEADER,
+    ScanResult,
+    fetch_submodules,
+    render_requirements,
+    scan_project,
+)
 from gpygap.sync import SyncOptions, run_sync
 from gpygap.util import normalize_name, write_if_changed
 
@@ -61,12 +67,22 @@ def _build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--stdout", action="store_true", help="print the file instead of writing it")
     scan.add_argument("--no-imports", action="store_true", help="only read declared dependencies")
     scan.add_argument(
+        "--init-submodules",
+        action="store_true",
+        help="run `git submodule update --init --recursive` in the project first; "
+        "this clones from the hosts the project declares, so it is off by default",
+    )
+    scan.add_argument(
         "--check-index",
         action="store_true",
         help="confirm guessed names against upstream.index_url; report what it does not have",
     )
     scan.add_argument("--force", action="store_true", help="overwrite an output file this tool did not write")
-    scan.add_argument("--strict", action="store_true", help="exit 1 if an import matched no distribution")
+    scan.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 if an import matched no distribution, or a declared submodule has no content",
+    )
     scan.add_argument("-v", "--verbose", action="store_true")
 
     commands.add_parser(
@@ -112,6 +128,11 @@ def _scan(args: argparse.Namespace) -> int:
         print(f"not a directory: {args.path}", file=sys.stderr)
         return 2
     setup_console_logging(verbose=args.verbose)
+    if args.init_submodules and (failure := fetch_submodules(root)) is not None:
+        # Not fatal. The scan still describes the tree it can read, and whatever
+        # stayed empty is named below and fails --strict, which is a more useful
+        # answer than refusing to look at the project at all.
+        print(failure, file=sys.stderr)
     result = scan_project(
         root,
         follow_imports=not args.no_imports,
@@ -125,7 +146,7 @@ def _scan(args: argparse.Namespace) -> int:
     else:
         return 2
     _report_scan(result)
-    return 1 if args.strict and result.unmatched else 0
+    return 1 if args.strict and (result.unmatched or result.missing_submodules) else 0
 
 
 def _write_scan(result: ScanResult, rendered: str, args: argparse.Namespace, config: Config) -> Path | None:
@@ -159,6 +180,12 @@ def _is_handwritten(destination: Path) -> bool:
 
 
 def _report_scan(result: ScanResult) -> None:
+    for module in result.missing_submodules:
+        print(
+            f"submodule has no content, so its requirements are missing from this scan: "
+            f"{module.path} (run `git submodule update --init --recursive`)",
+            file=sys.stderr,
+        )
     for lock in result.lock_files:
         print(f"lock file, hand it to the intake directory unchanged: {lock}")
     for item in result.unmatched:

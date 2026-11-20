@@ -10,6 +10,7 @@ environment, where the imports describe somebody's machine rather than a project
 
 from __future__ import annotations
 
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -198,3 +199,206 @@ def test_the_rendered_file_says_where_every_requirement_came_from(tmp_path: Path
     assert "cocotb" in rendered
     assert "sim/bench.py" in rendered
     assert rendered.endswith("\n")
+
+
+def project(name: str, *dependencies: str) -> str:
+    deps = ", ".join(f'"{dep}"' for dep in dependencies)
+    return f'[project]\nname = "{name}"\nversion = "0"\ndependencies = [{deps}]\n'
+
+
+def gitmodules(*paths: str) -> str:
+    """A ``.gitmodules`` the way git writes it: tab-indented, one section each."""
+    return "".join(f'[submodule "{path}"]\n\tpath = {path}\n\turl = ../{path}.git\n' for path in paths)
+
+
+def test_requirements_inside_a_populated_submodule_belong_to_the_project(tmp_path: Path) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / "bench.py", "import cocotb\n")
+    write(tmp_path / "vendor" / "lib" / "driver.py", "import cocotb_bus\n")
+    write(tmp_path / "vendor" / "lib" / "pyproject.toml", project("lib", "pyserial==3.5"))
+
+    result = scan_project(tmp_path)
+
+    assert set(result.requirements) == {"cocotb", "cocotb-bus", "pyserial==3.5"}
+    assert result.submodules == (scan.Submodule(path="vendor/lib", populated=True),)
+    assert result.missing_submodules == ()
+
+
+def test_a_submodule_with_no_content_is_named_rather_than_passed_over(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # `git clone` without --recurse-submodules leaves the directory empty. Walking
+    # past it reports a shorter list with the same confidence, and the person who
+    # finds out is the one with no way to download the difference.
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / "bench.py", "import cocotb\n")
+    (tmp_path / "vendor" / "lib").mkdir(parents=True)
+
+    with caplog.at_level("WARNING", logger="gpygap.scan"):
+        result = scan_project(tmp_path)
+
+    assert result.requirements == ("cocotb",)
+    assert result.missing_submodules == (scan.Submodule(path="vendor/lib", populated=False),)
+    assert "vendor/lib" in caplog.text
+    assert "git submodule update" in caplog.text
+
+
+def test_a_submodule_the_archive_never_carried_counts_as_missing(tmp_path: Path) -> None:
+    # An export of the superproject may not even create the directory.
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+
+    assert scan_project(tmp_path).missing_submodules == (scan.Submodule(path="vendor/lib", populated=False),)
+
+
+def test_a_nested_submodule_is_reached_through_the_populated_one(tmp_path: Path) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("outer"))
+    write(tmp_path / "outer" / ".gitmodules", gitmodules("inner"))
+    write(tmp_path / "outer" / "use.py", "import httpx\n")
+    (tmp_path / "outer" / "inner").mkdir(parents=True)
+
+    result = scan_project(tmp_path)
+
+    assert result.submodules == (
+        scan.Submodule(path="outer", populated=True),
+        scan.Submodule(path="outer/inner", populated=False),
+    )
+
+
+def test_an_empty_submodule_hides_its_own_submodules_too(tmp_path: Path) -> None:
+    # Nothing below an empty submodule can be counted, which is the second reason
+    # the empty one has to be reported instead of skipped.
+    write(tmp_path / ".gitmodules", gitmodules("outer"))
+    (tmp_path / "outer").mkdir()
+
+    assert scan_project(tmp_path).submodules == (scan.Submodule(path="outer", populated=False),)
+
+
+def test_a_submodule_path_that_leaves_the_project_is_refused(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A scan reads whatever it walks into, so a declaration pointing out of the
+    # project is not followed.
+    write(tmp_path / ".gitmodules", gitmodules("../elsewhere"))
+
+    with caplog.at_level("WARNING", logger="gpygap.scan"):
+        assert scan_project(tmp_path).submodules == ()
+
+    assert "leaves the project" in caplog.text
+
+
+def test_the_rendered_file_leads_with_the_submodules_it_could_not_read(tmp_path: Path) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / "bench.py", "import cocotb\n")
+    (tmp_path / "vendor" / "lib").mkdir(parents=True)
+
+    rendered = render_requirements(scan_project(tmp_path), today=date(2026, 11, 20))
+
+    assert "INCOMPLETE" in rendered
+    assert "#   vendor/lib" in rendered
+    # Ahead of the requirements, because the list below it is the incomplete part.
+    assert rendered.index("INCOMPLETE") < rendered.index("cocotb  #")
+
+
+class FakeCompleted:
+    """Enough of ``subprocess.CompletedProcess`` for the fetch to read."""
+
+    def __init__(self, returncode: int = 0, stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+def test_fetching_submodules_asks_git_to_recurse_in_the_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+    seen: dict[str, object] = {}
+
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> FakeCompleted:
+        seen["command"] = command
+        return FakeCompleted()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert scan.fetch_submodules(tmp_path) is None
+    assert seen["command"] == (
+        "git",
+        "-C",
+        str(tmp_path),
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    )
+
+
+def test_a_project_with_no_submodules_is_never_handed_to_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("git must not be run for a project that declares no submodules")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+
+    assert scan.fetch_submodules(tmp_path) is None
+
+
+def test_a_tree_that_is_not_a_checkout_is_reported_rather_than_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An unpacked archive can carry .gitmodules without carrying a repository.
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("git must not be run outside a checkout")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+
+    assert "not a git checkout" in (scan.fetch_submodules(tmp_path) or "")
+
+
+def test_git_being_absent_is_a_sentence_not_an_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+
+    def missing(*args: object, **kwargs: object) -> None:
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+
+    assert "git is not installed" in (scan.fetch_submodules(tmp_path) or "")
+
+
+def test_a_fetch_that_failed_repeats_what_git_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+    # git retries and then summarises, so the last line is only the outcome and
+    # the first fatal: is the cause -- the part an operator can act on.
+    stderr = (
+        "Cloning into '/x/vendor/lib'...\n"
+        "fatal: could not read from remote repository\n"
+        "Failed to clone 'vendor/lib'. Retry scheduled\n"
+        "fatal: could not read from remote repository\n"
+        "Failed to clone 'vendor/lib' a second time, aborting\n"
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FakeCompleted(returncode=128, stderr=stderr))
+
+    failure = scan.fetch_submodules(tmp_path) or ""
+
+    assert "git exit 128" in failure
+    assert "could not read from remote repository" in failure
+    assert "a second time" not in failure
+
+
+def test_a_fetch_that_timed_out_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write(tmp_path / ".gitmodules", gitmodules("vendor/lib"))
+    write(tmp_path / ".git", "gitdir: elsewhere\n")
+
+    def slow(*args: object, **kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(cmd="git", timeout=600.0)
+
+    monkeypatch.setattr(subprocess, "run", slow)
+
+    assert "did not finish within 600s" in (scan.fetch_submodules(tmp_path) or "")

@@ -109,6 +109,21 @@ into `intake/` and stops there, which also keeps the command-line/configuration 
 To revisit: if a site ends up scanning dozens of trees on a schedule, the loop belongs in
 their cron, not in `sync`.
 
+## A scan fetches nothing unless asked, and then only submodules
+
+A scan reads files and parses them. That is what makes running it on the host as safe as
+running a linter, and what makes it reasonable to point at a directory somebody handed over.
+Filling the project's submodules is the one useful thing that breaks it: `git submodule
+update` clones from whatever hosts the scanned project named in `.gitmodules`, over the
+network, before anybody has read them. On by default, that would mean every scan of every
+handed-over tree fetches from addresses its author chose.
+
+So it is `--init-submodules`, off unless asked. A failed fetch does not abort the scan
+either: the empty submodules are still reported and `--strict` still fails on them, which is
+the answer the operator needs whether or not the clone worked. To revisit: if trees arrive as
+exports rather than clones often enough that the flag is always passed, the default belongs
+in `gpygap.toml`, not flipped here.
+
 ## Wheels are built here, not on the developer machine
 
 A package with no wheel for a target used to be shipped as an sdist and compiled at
