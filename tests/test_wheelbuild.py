@@ -106,12 +106,16 @@ def test_building_is_a_no_op_when_switched_off(tmp_path: Path) -> None:
 def test_a_missing_engine_turns_every_target_into_a_reported_gap(tmp_path: Path) -> None:
     # Silence here would be the worst outcome: the run would look complete while
     # every package without an upstream wheel had quietly been left out.
+    #
+    # Two container targets, no win-amd64: on a Windows host that one is built in
+    # process and a missing engine does not touch it, which is a different statement
+    # and has its own test below.
     config = config_at(tmp_path, '[build]\nengine = "definitely-not-installed"\n')
     sdist = tmp_path / "gpygap" / "packages" / "a" / "a-1.tar.gz"
     sdist.parent.mkdir(parents=True)
     sdist.write_text("x", "utf-8")
     factory = WheelFactory(config)  # type: ignore[arg-type]
-    summary = factory.run({"packages/a/a-1.tar.gz": {LINUX, WINDOWS}}, {})
+    summary = factory.run({"packages/a/a-1.tar.gz": {LINUX, MUSL}}, {})
     assert {g.reason for g in summary.gaps} == {"no-engine"}
     assert len(summary.gaps) == 2
 
@@ -403,7 +407,9 @@ def test_an_unreachable_engine_still_publishes_every_gap(tmp_path: Path) -> None
     sdist.write_text("x", "utf-8")
     factory = WheelFactory(config)  # type: ignore[arg-type]
 
-    summary = factory.run({"packages/a/a-1.tar.gz": {LINUX, WINDOWS}}, {})
+    # Both need a container on every host, so what this asserts does not depend on
+    # the one it runs on.
+    summary = factory.run({"packages/a/a-1.tar.gz": {LINUX, MUSL}}, {})
 
     assert summary.engine_unreachable
     assert {g.reason for g in summary.gaps} == {"no-engine"}
